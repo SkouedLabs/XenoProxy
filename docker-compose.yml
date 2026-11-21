@@ -180,7 +180,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: xenoproxy/backend:0.1.0
+    image: skouedlabs/xenoproxy-backend:latest
     container_name: xenoproxy-api
     command: ["api"]
     # Loopback only, for a reverse proxy running on the host instead of the
@@ -260,7 +260,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: xenoproxy/backend:0.1.0
+    image: skouedlabs/xenoproxy-backend:latest
     container_name: xenoproxy-worker
     command: ["worker"]
     depends_on:
@@ -307,7 +307,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: xenoproxy/frontend:0.1.0
+    image: skouedlabs/xenoproxy-frontend:latest
     container_name: xenoproxy-frontend
     ports:
       - "127.0.0.1:8098:8081"
