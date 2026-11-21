@@ -131,6 +131,12 @@ class JobSummaryOut(BaseModel):
     depth: int = 0
 
 
+class JobResultOut(JobSummaryOut):
+    """A job with each plugin's normalised outcome. Raw provider payloads stay out of it."""
+
+    reports: list[PluginReportOut]
+
+
 class JobDetailOut(JobSummaryOut):
     # Present when the job was submitted as a file rather than as a value. The
     # stored path is deliberately absent: it is an internal location, and the

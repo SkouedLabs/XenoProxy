@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime
-from typing import Annotated, Any
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, client_ip, require
@@ -25,6 +26,7 @@ from app.models.job import (
     ObservableType,
     PluginKind,
     PluginReport,
+    ReportStatus,
     ScanMode,
     Tlp,
     Verdict,
@@ -36,6 +38,7 @@ from app.schemas.common import MessageResponse, Page
 from app.schemas.jobs import (
     JobCreate,
     JobDetailOut,
+    JobResultOut,
     JobSummaryOut,
     JobTagsUpdate,
     ObservablePreview,
@@ -331,12 +334,34 @@ async def create_file_job(
     return _job_detail(job)
 
 
-@router.get("", response_model=Page[JobSummaryOut], summary="List team jobs")
-async def list_jobs(
-    session: DbSession,
-    user: AnalystUser,
-    page: Annotated[int, Query(ge=1, le=1000)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+@dataclass(frozen=True)
+class JobFilters:
+    """Every criterion the job listings accept, parsed once and shared by both listings."""
+
+    search: str | None
+    status: JobStatus | None
+    verdict: Verdict | None
+    observable_type: ObservableType | None
+    tag: str | None
+    requested_by: str | None
+    tlp: Tlp | None
+    origin: JobOrigin | None
+    derived: bool | None
+    created_from: datetime | None
+    created_to: datetime | None
+    plugin: str | None
+    plugin_status: ReportStatus | None
+    order: Literal["asc", "desc"]
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """A date without a zone is read as UTC, so comparisons never mix naive and aware values."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
+def job_filters(
     search: Annotated[str | None, Query(max_length=256)] = None,
     job_status: Annotated[JobStatus | None, Query(alias="status")] = None,
     job_verdict: Annotated[Verdict | None, Query(alias="verdict")] = None,
@@ -346,37 +371,110 @@ async def list_jobs(
     job_tlp: Annotated[Tlp | None, Query(alias="tlp")] = None,
     origin: Annotated[JobOrigin | None, Query()] = None,
     derived: Annotated[bool | None, Query()] = None,
-) -> Page[JobSummaryOut]:
-    """Jobs are shared across the organisation so the team mutualises its history."""
+    created_from: Annotated[
+        datetime | None, Query(description="Submitted at or after this instant (ISO 8601).")
+    ] = None,
+    created_to: Annotated[
+        datetime | None, Query(description="Submitted at or before this instant (ISO 8601).")
+    ] = None,
+    plugin: Annotated[
+        str | None,
+        Query(max_length=64, description="Only jobs where this analyzer, connector or pivot ran."),
+    ] = None,
+    plugin_status: Annotated[
+        ReportStatus | None,
+        Query(description="With `plugin`: only jobs where that plugin ended in this status."),
+    ] = None,
+    order: Annotated[Literal["asc", "desc"], Query(description="Sort on submission time.")] = (
+        "desc"
+    ),
+) -> JobFilters:
+    created_from = _as_utc(created_from)
+    created_to = _as_utc(created_to)
+    if created_from and created_to and created_from > created_to:
+        raise ValidationFailedError("created_from must be earlier than or equal to created_to.")
+    if plugin_status is not None and not plugin:
+        raise ValidationFailedError("plugin_status needs plugin to say which plugin it applies to.")
+    return JobFilters(
+        search=search,
+        status=job_status,
+        verdict=job_verdict,
+        observable_type=observable_type,
+        tag=tag,
+        requested_by=requested_by,
+        tlp=job_tlp,
+        origin=origin,
+        derived=derived,
+        created_from=created_from,
+        created_to=created_to,
+        plugin=plugin.strip() if plugin else None,
+        plugin_status=plugin_status,
+        order=order,
+    )
+
+
+JobFilterParams = Annotated[JobFilters, Depends(job_filters)]
+
+
+def _filtered_jobs(user: User, filters: JobFilters) -> Select[tuple[Job]]:
     statement = _visible_jobs(user)
-    if search:
-        statement = statement.where(Job.observable_value.ilike(f"%{search.strip()}%"))
-    if job_status:
-        statement = statement.where(Job.status == job_status)
-    if job_verdict:
-        statement = statement.where(Job.verdict == job_verdict)
-    if job_tlp:
-        statement = statement.where(Job.tlp == job_tlp)
-    if origin:
-        statement = statement.where(Job.origin == origin)
-    if observable_type:
-        statement = statement.where(Job.observable_type == observable_type)
-    if tag:
-        statement = statement.where(Job.tags.any(tag.strip().lower()))
-    if requested_by:
-        statement = statement.where(Job.requested_by_name == requested_by.strip().lower())
-    if derived is not None:
+    if filters.search:
+        statement = statement.where(Job.observable_value.ilike(f"%{filters.search.strip()}%"))
+    if filters.status:
+        statement = statement.where(Job.status == filters.status)
+    if filters.verdict:
+        statement = statement.where(Job.verdict == filters.verdict)
+    if filters.tlp:
+        statement = statement.where(Job.tlp == filters.tlp)
+    if filters.origin:
+        statement = statement.where(Job.origin == filters.origin)
+    if filters.observable_type:
+        statement = statement.where(Job.observable_type == filters.observable_type)
+    if filters.tag:
+        statement = statement.where(Job.tags.any(filters.tag.strip().lower()))
+    if filters.requested_by:
+        statement = statement.where(Job.requested_by_name == filters.requested_by.strip().lower())
+    if filters.derived is not None:
         # Lets the history hide, or show only, the jobs a pivot created.
         statement = statement.where(
-            Job.parent_job_id.isnot(None) if derived else Job.parent_job_id.is_(None)
+            Job.parent_job_id.isnot(None) if filters.derived else Job.parent_job_id.is_(None)
         )
+    if filters.created_from:
+        statement = statement.where(Job.created_at >= filters.created_from)
+    if filters.created_to:
+        statement = statement.where(Job.created_at <= filters.created_to)
+    if filters.plugin:
+        # One EXISTS over the reports, so the name and the status must hold for the same report.
+        criteria = [PluginReport.plugin_name == filters.plugin]
+        if filters.plugin_status:
+            criteria.append(PluginReport.status == filters.plugin_status)
+        statement = statement.where(Job.reports.any(and_(*criteria)))
+    return statement
 
+
+def _ordered(statement: Select[tuple[Job]], order: Literal["asc", "desc"]) -> Select[tuple[Job]]:
+    # The id breaks ties so pages never overlap when many jobs share a timestamp.
+    if order == "asc":
+        return statement.order_by(Job.created_at.asc(), Job.id.asc())
+    return statement.order_by(Job.created_at.desc(), Job.id.desc())
+
+
+@router.get("", response_model=Page[JobSummaryOut], summary="List team jobs")
+async def list_jobs(
+    session: DbSession,
+    user: AnalystUser,
+    filters: JobFilterParams,
+    page: Annotated[int, Query(ge=1, le=1000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> Page[JobSummaryOut]:
+    """Jobs are shared across the organisation so the team mutualises its history."""
+    statement = _filtered_jobs(user, filters)
     total = (
         await session.execute(select(func.count()).select_from(statement.subquery()))
     ).scalar_one()
     rows = (
         await session.execute(
-            statement.order_by(Job.created_at.desc())
+            _ordered(statement, filters.order)
             .offset((page - 1) * page_size)
             .limit(page_size)
             .options(selectinload(Job.reports))
@@ -389,6 +487,55 @@ async def list_jobs(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get(
+    "/results",
+    response_model=Page[JobResultOut],
+    summary="Scan results: the same filters, with each plugin's normalised outcome",
+)
+async def list_job_results(
+    session: DbSession,
+    user: AnalystUser,
+    filters: JobFilterParams,
+    page: Annotated[int, Query(ge=1, le=1000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> Page[JobResultOut]:
+    """Built for integrations that pull results in bulk.
+
+    Each job carries its plugin reports' normalised summaries. Raw provider payloads are
+    not included: fetch them one at a time from `/jobs/{id}/reports/{plugin}/raw`.
+    When `plugin` is given, only that plugin's reports are embedded, matching `plugin_status`
+    if it is also given.
+    """
+    statement = _filtered_jobs(user, filters)
+    total = (
+        await session.execute(select(func.count()).select_from(statement.subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            _ordered(statement, filters.order)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .options(selectinload(Job.reports))
+        )
+    ).scalars()
+
+    items = [_job_result(job, filters) for job in rows]
+    return Page[JobResultOut](items=items, total=int(total), page=page, page_size=page_size)
+
+
+def _job_result(job: Job, filters: JobFilters) -> JobResultOut:
+    reports = job.reports
+    if filters.plugin:
+        reports = [
+            report
+            for report in reports
+            if report.plugin_name == filters.plugin
+            and (filters.plugin_status is None or report.status == filters.plugin_status)
+        ]
+    summaries = [PluginReportOut.model_validate(report, from_attributes=True) for report in reports]
+    return JobResultOut(**_job_summary(job).model_dump(), reports=summaries)
 
 
 @router.get("/{job_id}", response_model=JobDetailOut, summary="Read one job with its reports")

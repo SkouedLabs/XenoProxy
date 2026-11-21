@@ -28,6 +28,7 @@ returns the stored response instead of submitting twice, which is what makes a r
 | POST | `/api/v1/jobs/preview` | `jobs:read` | Classify an observable and list what can run on it |
 | POST | `/api/v1/jobs` | `jobs:write` | Submit a scan |
 | GET | `/api/v1/jobs` | `jobs:read` | Team history, filtered and paginated |
+| GET | `/api/v1/jobs/results` | `jobs:read` | The same filters, each job with its plugins' normalised outcomes (bulk pull) |
 | GET | `/api/v1/jobs/{id}` | `jobs:read` | One job with every report |
 | GET | `/api/v1/jobs/{id}/events` | `jobs:read` | Live progress (server-sent events) |
 | GET | `/api/v1/jobs/{id}/export?format=json\|markdown` | `jobs:export` | Export a report |
@@ -51,6 +52,37 @@ returns the stored response instead of submitting twice, which is what makes a r
 
 The full specification is at `/api/openapi.json`, served on a development instance only —
 `BACKEND_ENVIRONMENT=development`.
+
+## Filtering the job history
+
+`GET /api/v1/jobs` and `GET /api/v1/jobs/results` take the same filters, combined with AND:
+
+| Parameter | Meaning |
+|---|---|
+| `search` | Part of the observable value |
+| `observable_type` | `ip`, `domain`, `url`, `hash`, `file`, `generic` |
+| `status`, `verdict`, `tlp`, `origin` | Job status, verdict, TLP, entry point (`ui`, `api`, `assistant`, `mcp`, `pivot`) |
+| `requested_by` | Username of the submitter |
+| `tag` | A tag on the job |
+| `derived` | `true` for pivot-derived jobs only, `false` for the others |
+| `created_from`, `created_to` | ISO 8601 bounds, inclusive. A date without a zone is read as UTC |
+| `plugin` | Only jobs where this analyzer, connector or pivot ran |
+| `plugin_status` | With `plugin`: only jobs where that plugin ended in this status (`SUCCESS`, `FAILED`, …) |
+| `order` | `desc` (default, newest first) or `asc` |
+| `page`, `page_size` | Pagination, `page_size` up to 100 |
+
+`/api/v1/jobs/results` embeds each job's reports with their normalised `summary_data`, status
+and errors, but not the raw provider payloads. When `plugin` is set, only that plugin's reports
+are embedded. Fetch a raw payload with `/api/v1/jobs/{id}/reports/{plugin}/raw`.
+
+```bash
+curl -s "https://xenoproxy.example.org/api/v1/jobs/results?created_from=2026-11-01T00:00:00Z&plugin=shodan&plugin_status=SUCCESS&requested_by=emeryn&page_size=100" \
+  -H 'Authorization: Bearer <token>' \
+  -H 'X-Requested-With: XMLHttpRequest'
+```
+
+A token only sees what its account can see: jobs at CLEAR or GREEN, plus those shared with
+its groups, and everything for an administrator.
 
 ## Searching inside the payloads
 
