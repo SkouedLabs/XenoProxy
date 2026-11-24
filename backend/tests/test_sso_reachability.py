@@ -10,7 +10,7 @@ from app.services.settings_sections import OidcSettings
 
 
 def test_an_internal_identity_provider_is_reachable() -> None:
-    validate_destination("https://idp.corp.local:8443/realms/main", allow_private=True)
+    validate_destination("https://192.168.10.20:8443/realms/main", allow_private=True)
     validate_destination("https://10.1.2.3/.well-known/openid-configuration", allow_private=True)
 
 
