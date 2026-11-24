@@ -76,7 +76,7 @@ and errors, but not the raw provider payloads. When `plugin` is set, only that p
 are embedded. Fetch a raw payload with `/api/v1/jobs/{id}/reports/{plugin}/raw`.
 
 ```bash
-curl -s "https://xenoproxy.example.org/api/v1/jobs/results?created_from=2026-11-01T00:00:00Z&plugin=shodan&plugin_status=SUCCESS&requested_by=emeryn&page_size=100" \
+curl -s "https://xenoproxy.example.org/api/v1/jobs/results?created_from=2026-11-01T00:00:00Z&plugin=shodan&plugin_status=SUCCESS&requested_by=<username>&page_size=100" \
   -H 'Authorization: Bearer <token>' \
   -H 'X-Requested-With: XMLHttpRequest'
 ```

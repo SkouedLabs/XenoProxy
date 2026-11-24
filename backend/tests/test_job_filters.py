@@ -60,7 +60,7 @@ def test_the_plugin_name_and_status_must_match_the_same_report() -> None:
         plugin_status=ReportStatus.SUCCESS,
         created_from=datetime(2026, 11, 1, tzinfo=UTC),
         created_to=datetime(2026, 11, 20, tzinfo=UTC),
-        requested_by="Emeryn",
+        requested_by="user",
         order="asc",
     )
     statement = _ordered(_filtered_jobs(ADMIN, parsed), parsed.order)
