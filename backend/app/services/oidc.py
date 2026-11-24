@@ -2,8 +2,16 @@
 
 Discovery, JWKS and the token endpoint are reached through the shared HTTP
 client, so the proxy and internal certificate authority apply here too. The
-`state`, `nonce` and PKCE verifier live in a short-lived signed cookie rather
-than in server memory, so the flow survives a restart and several API replicas.
+identity provider is infrastructure an administrator chose, not a target an
+analyst submitted, so it may live on the internal network: the non-routable
+restriction that protects scans does not apply to it, while cloud metadata
+endpoints stay refused. The `state`, `nonce` and PKCE verifier live in a
+short-lived signed cookie rather than in server memory, so the flow survives a
+restart and several API replicas.
+
+The configuration is the `oidc` settings section, with any field pinned by a
+`BACKEND_OIDC_*` variable taking precedence, so the interface and a headless
+deployment drive the same flow.
 """
 
 from __future__ import annotations
@@ -20,11 +28,14 @@ from urllib.parse import urlencode
 
 from joserfc import jwt
 from joserfc.jwk import KeySet
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.errors import AppError, UnauthorizedError
 from app.core.http_client import get, post
 from app.core.logging import get_logger
+from app.services import app_settings
+from app.services.settings_sections import OidcSettings
 
 logger = get_logger(__name__)
 
@@ -32,9 +43,21 @@ STATE_COOKIE = "__Host-oidc-state"
 STATE_TTL_SECONDS = 600
 _DISCOVERY_PATH = "/.well-known/openid-configuration"
 
-_metadata_cache: tuple[float, dict[str, Any]] | None = None
-_jwks_cache: tuple[float, Any] | None = None
+# Keyed by issuer, so pointing the instance at another provider never serves
+# the previous provider's endpoints or keys.
+_metadata_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_jwks_cache: dict[str, tuple[float, Any]] = {}
 _CACHE_TTL_SECONDS = 3600
+
+# Section field -> configuration attribute that pins it from the environment.
+_ENVIRONMENT_FIELDS = {
+    "enabled": "oidc_enabled",
+    "issuer": "oidc_issuer",
+    "client_id": "oidc_client_id",
+    "client_secret": "oidc_client_secret",
+    "scopes": "oidc_scopes",
+    "admin_group": "oidc_admin_group",
+}
 
 
 class OidcNotConfiguredError(AppError):
@@ -53,51 +76,65 @@ class OidcIdentity:
     groups: list[str]
 
 
-def _require_config() -> tuple[str, str, str]:
+async def effective_config(session: AsyncSession) -> OidcSettings:
+    """The stored section, overlaid with the fields the environment pins."""
+    section: OidcSettings = await app_settings.load(session, "oidc")
     settings = get_settings()
-    if not settings.oidc_enabled:
+    pinned: dict[str, Any] = {
+        field: getattr(settings, attribute)
+        for field, attribute in _ENVIRONMENT_FIELDS.items()
+        if settings.managed_by_environment(attribute)
+        and getattr(settings, attribute) is not None
+    }
+    if not pinned:
+        return section
+    return OidcSettings.model_validate({**section.model_dump(), **pinned})
+
+
+def is_available(config: OidcSettings) -> bool:
+    """Whether the sign-in page should offer single sign-on."""
+    return config.enabled and bool(config.issuer and config.client_id and config.client_secret)
+
+
+def _require_config(config: OidcSettings) -> tuple[str, str, str]:
+    if not config.enabled:
         raise OidcNotConfiguredError("Single sign-on is not enabled on this instance.")
-    if not (settings.oidc_issuer and settings.oidc_client_id and settings.oidc_client_secret):
+    if not is_available(config):
         raise OidcNotConfiguredError(
             "Single sign-on is enabled but the issuer, client id or client secret is missing."
         )
-    return (
-        settings.oidc_issuer.rstrip("/"),
-        settings.oidc_client_id,
-        settings.oidc_client_secret,
-    )
+    return config.issuer.rstrip("/"), config.client_id, config.client_secret
 
 
-async def _metadata() -> dict[str, Any]:
+async def _metadata(issuer: str) -> dict[str, Any]:
     """Fetch and cache the provider discovery document."""
-    global _metadata_cache
-    issuer, _, _ = _require_config()
     now = time.monotonic()
-    if _metadata_cache and now - _metadata_cache[0] < _CACHE_TTL_SECONDS:
-        return _metadata_cache[1]
+    cached = _metadata_cache.get(issuer)
+    if cached and now - cached[0] < _CACHE_TTL_SECONDS:
+        return cached[1]
 
-    response = await get(f"{issuer}{_DISCOVERY_PATH}", timeout=15)
+    response = await get(f"{issuer}{_DISCOVERY_PATH}", timeout=15, allow_private=True)
     if not response.ok or not isinstance(response.json_body, dict):
         raise OidcNotConfiguredError("The provider discovery document could not be read.")
-    _metadata_cache = (now, response.json_body)
+    _metadata_cache[issuer] = (now, response.json_body)
     return response.json_body
 
 
-async def _jwks() -> Any:
-    global _jwks_cache
+async def _jwks(issuer: str) -> Any:
     now = time.monotonic()
-    if _jwks_cache and now - _jwks_cache[0] < _CACHE_TTL_SECONDS:
-        return _jwks_cache[1]
+    cached = _jwks_cache.get(issuer)
+    if cached and now - cached[0] < _CACHE_TTL_SECONDS:
+        return cached[1]
 
-    metadata = await _metadata()
+    metadata = await _metadata(issuer)
     jwks_uri = str(metadata.get("jwks_uri") or "")
     if not jwks_uri:
         raise OidcNotConfiguredError("The provider advertises no JWKS endpoint.")
-    response = await get(jwks_uri, timeout=15)
+    response = await get(jwks_uri, timeout=15, allow_private=True)
     if not response.ok or not isinstance(response.json_body, dict):
         raise OidcNotConfiguredError("The provider signing keys could not be read.")
     key_set = KeySet.import_key_set(response.json_body)
-    _jwks_cache = (now, key_set)
+    _jwks_cache[issuer] = (now, key_set)
     return key_set
 
 
@@ -129,11 +166,10 @@ def open_state(token: str) -> dict[str, str]:
     return {key: str(value) for key, value in data.items()}
 
 
-async def build_authorization_url(redirect_uri: str) -> tuple[str, str]:
+async def build_authorization_url(config: OidcSettings, redirect_uri: str) -> tuple[str, str]:
     """Return the provider URL to redirect to, and the state to store in a cookie."""
-    _, client_id, _ = _require_config()
-    settings = get_settings()
-    metadata = await _metadata()
+    issuer, client_id, _ = _require_config(config)
+    metadata = await _metadata(issuer)
     endpoint = str(metadata.get("authorization_endpoint") or "")
     if not endpoint:
         raise OidcNotConfiguredError("The provider advertises no authorization endpoint.")
@@ -152,7 +188,7 @@ async def build_authorization_url(redirect_uri: str) -> tuple[str, str]:
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": redirect_uri,
-            "scope": settings.oidc_scopes,
+            "scope": config.scopes,
             "state": state,
             "nonce": nonce,
             "code_challenge": challenge,
@@ -164,15 +200,20 @@ async def build_authorization_url(redirect_uri: str) -> tuple[str, str]:
 
 
 async def exchange_code(
-    *, code: str, redirect_uri: str, state_token: str, returned_state: str
+    config: OidcSettings,
+    *,
+    code: str,
+    redirect_uri: str,
+    state_token: str,
+    returned_state: str,
 ) -> OidcIdentity:
     """Validate the callback, exchange the code and verify the identity token."""
-    _, client_id, client_secret = _require_config()
+    issuer, client_id, client_secret = _require_config(config)
     stored = open_state(state_token)
     if not hmac.compare_digest(stored.get("state", ""), returned_state):
         raise UnauthorizedError("The sign-on state does not match.")
 
-    metadata = await _metadata()
+    metadata = await _metadata(issuer)
     token_endpoint = str(metadata.get("token_endpoint") or "")
     if not token_endpoint:
         raise OidcNotConfiguredError("The provider advertises no token endpoint.")
@@ -189,6 +230,7 @@ async def exchange_code(
         },
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=20,
+        allow_private=True,
     )
     if not response.ok or not isinstance(response.json_body, dict):
         logger.warning("oidc_token_exchange_failed", status_code=response.status_code)
@@ -198,14 +240,13 @@ async def exchange_code(
     if not id_token:
         raise UnauthorizedError("The identity provider returned no identity token.")
 
-    issuer, _, _ = _require_config()
     algorithms = [
         str(algorithm)
         for algorithm in metadata.get("id_token_signing_alg_values_supported") or ["RS256"]
         if str(algorithm) != "none"
     ]
     try:
-        token = jwt.decode(id_token, await _jwks(), algorithms=algorithms)
+        token = jwt.decode(id_token, await _jwks(issuer), algorithms=algorithms)
         claims = token.claims
     except Exception as exc:
         logger.warning("oidc_id_token_invalid", error=str(exc))
@@ -223,7 +264,7 @@ async def exchange_code(
     if not isinstance(expiry, int) or expiry < int(time.time()):
         raise UnauthorizedError("The identity token has expired.")
 
-    groups_claim = claims.get("groups") or claims.get("roles") or []
+    groups_claim = claims.get(config.groups_claim) or claims.get("roles") or []
     groups = [str(group) for group in groups_claim] if isinstance(groups_claim, list) else []
 
     username = str(

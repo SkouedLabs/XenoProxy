@@ -19,7 +19,9 @@ from app.core.crypto import hash_password, new_token, token_fingerprint, verify_
 from app.core.errors import UnauthorizedError
 from app.core.logging import get_logger
 from app.models.user import ApiKey, AuthSource, MfaRecoveryCode, Role, Session, User
-from app.services import audit, group_mapping, settings_store
+from app.services import app_settings, audit, group_mapping, settings_store
+from app.services.directory import DirectoryError
+from app.services.directory import authenticate as directory_authenticate
 
 logger = get_logger(__name__)
 
@@ -46,6 +48,50 @@ async def authenticate_local(session: AsyncSession, username: str, password: str
     if not verify_password(user.password_hash, password):
         return None
     return user
+
+
+async def authenticate_directory(
+    session: AsyncSession, username: str, password: str
+) -> User | None:
+    """Verify a credential against the configured LDAP directory, when there is one.
+
+    An account that already exists under another source is never taken over by
+    a directory answer: a directory user named like a local administrator must
+    not become that administrator.
+    """
+    ldap = await app_settings.load(session, "ldap")
+    if not (ldap.enabled and ldap.server_url):
+        return None
+
+    network = await app_settings.load(session, "network")
+    try:
+        profile = await directory_authenticate(ldap, network.ca_bundle, username, password)
+    except DirectoryError as exc:
+        logger.info("directory_sign_in_refused", reason=str(exc))
+        return None
+    except Exception as exc:
+        logger.warning("directory_unreachable", error=type(exc).__name__)
+        return None
+
+    normalised = str(profile["username"]).strip().lower()[:128]
+    existing = (
+        await session.execute(select(User).where(User.username == normalised))
+    ).scalar_one_or_none()
+    if existing is not None and (
+        existing.auth_source is not AuthSource.LDAP or not existing.is_active
+    ):
+        logger.info("directory_sign_in_refused", reason="account belongs to another source")
+        return None
+
+    return await upsert_federated_user(
+        session,
+        username=normalised,
+        email=profile["email"] or None,
+        display_name=profile["display_name"] or None,
+        groups=list(profile["groups"]),
+        source=AuthSource.LDAP,
+        admin_group=ldap.admin_group,
+    )
 
 
 async def open_session(
@@ -150,6 +196,7 @@ async def upsert_federated_user(
     display_name: str | None,
     groups: list[str],
     source: AuthSource,
+    admin_group: str | None = None,
 ) -> User:
     """Provision or refresh a user coming from the proxy or the identity provider.
 
@@ -169,7 +216,8 @@ async def upsert_federated_user(
 
     # The legacy single-group setting still grants administration when it
     # matches, so a deployment configured before the mapping keeps working.
-    legacy_admin = bool(settings.oidc_admin_group) and settings.oidc_admin_group in groups
+    legacy_group = settings.oidc_admin_group if admin_group is None else admin_group
+    legacy_admin = bool(legacy_group) and legacy_group in groups
     resolution = await group_mapping.resolve(
         session, groups, fallback_admin=legacy_admin, source=source.value
     )

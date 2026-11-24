@@ -106,11 +106,12 @@ async def _probe_network(value: Any, target: str | None) -> dict[str, Any]:
     url = (target or "https://www.google.com/generate_204").strip()
     started = time.perf_counter()
 
-    # The address comes from a form, so it is validated before it is called:
-    # a connection test must not become a way of reaching this host or a cloud
-    # metadata service.
+    # The address comes from a form, so it is validated before it is called: a
+    # connection test must not become a way of reaching a cloud metadata
+    # service. An internal address is allowed, because checking that the route
+    # reaches the services the instance depends on is what the test is for.
     try:
-        http_client.validate_destination(url)
+        http_client.validate_destination(url, allow_private=True)
     except http_client.OutboundRequestError as exc:
         return _outcome(False, str(exc), started)
 
@@ -162,7 +163,7 @@ async def _probe_oidc(value: Any, _target: str | None) -> dict[str, Any]:
 
     discovery = f"{value.issuer}/.well-known/openid-configuration"
     try:
-        result = await http_client.get(discovery, timeout=15)
+        result = await http_client.get(discovery, timeout=15, allow_private=True)
     except Exception as exc:
         return _outcome(False, f"{type(exc).__name__}: {exc}", started)
     if not result.ok or not isinstance(result.json_body, dict):
@@ -176,7 +177,7 @@ async def _probe_oidc(value: Any, _target: str | None) -> dict[str, Any]:
         return _outcome(False, "the discovery document declares no jwks_uri", started)
 
     try:
-        keys = await http_client.get(jwks_uri, timeout=15)
+        keys = await http_client.get(jwks_uri, timeout=15, allow_private=True)
     except Exception as exc:
         return _outcome(
             False, f"the keys could not be fetched: {type(exc).__name__}: {exc}", started

@@ -56,11 +56,13 @@ _PUBLIC = {"login", "methods"}
 
 
 @router.get("/methods", response_model=AuthMethods, summary="List enabled sign-in methods")
-async def methods() -> AuthMethods:
+async def methods(session: DbSession) -> AuthMethods:
     settings = get_settings()
+    sso = await oidc.effective_config(session)
     return AuthMethods(
         local_enabled=True,
-        oidc_enabled=settings.oidc_enabled,
+        oidc_enabled=oidc.is_available(sso),
+        oidc_label=sso.label,
         proxy_enabled=settings.proxy_auth_enabled,
     )
 
@@ -72,6 +74,8 @@ async def login(
     """First step. An account with an authenticator gets a challenge, not a session."""
     ip = client_ip(request)
     user = await auth.authenticate_local(session, payload.username, payload.password)
+    if user is None:
+        user = await auth.authenticate_directory(session, payload.username, payload.password)
     if user is None:
         await audit.record(
             session,
@@ -335,12 +339,15 @@ async def revoke_api_key(
 )
 async def oidc_start(
     request: Request,
+    session: DbSession,
     next_path: Annotated[str | None, Query(alias="next", max_length=512)] = None,
 ) -> RedirectResponse:
     """Redirect the browser to the identity provider."""
     settings = get_settings()
     redirect_uri = f"{settings.public_url}/api/v1/auth/oidc/callback"
-    authorization_url, sealed_state = await oidc.build_authorization_url(redirect_uri)
+    authorization_url, sealed_state = await oidc.build_authorization_url(
+        await oidc.effective_config(session), redirect_uri
+    )
 
     response = RedirectResponse(authorization_url, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
@@ -381,7 +388,9 @@ async def oidc_callback(
     if not state_cookie:
         raise UnauthorizedError("The sign-on attempt is unknown; start again.")
 
+    sso = await oidc.effective_config(session)
     identity = await oidc.exchange_code(
+        sso,
         code=code,
         redirect_uri=f"{settings.public_url}/api/v1/auth/oidc/callback",
         state_token=state_cookie,
@@ -394,6 +403,7 @@ async def oidc_callback(
         display_name=identity.display_name,
         groups=identity.groups,
         source=AuthSource.OIDC,
+        admin_group=sso.admin_group,
     )
     record, token = await auth.open_session(
         session,

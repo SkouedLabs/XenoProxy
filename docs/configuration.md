@@ -33,7 +33,7 @@ and sealed; see [Security](security.md#credentials).
 | `BACKEND_ANALYZER_MAX_CONCURRENCY` | `8` | Analyzers running at once per job |
 | `BACKEND_REQUIRE_MFA_FOR_ADMINS` | `true` | Two-factor for administrators |
 | `BACKEND_REQUIRE_MFA_FOR_ALL` | `false` | Two-factor for every local account |
-| `BACKEND_ALLOW_PRIVATE_TARGETS` | `false` | Allow scanning loopback and RFC1918 targets |
+| `BACKEND_ALLOW_PRIVATE_TARGETS` | `false` | Allow scanning loopback and RFC1918 observables (admin-configured SSO, LDAPS and connectors are not affected) |
 | `BACKEND_OUTBOUND_PROXY_URL` | — | Egress proxy for every provider call |
 | `BACKEND_CUSTOM_CA_FILE` | — | Internal certificate authority bundle |
 

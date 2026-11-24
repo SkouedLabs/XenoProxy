@@ -68,6 +68,7 @@ class AuthMethods(BaseModel):
 
     local_enabled: bool
     oidc_enabled: bool
+    oidc_label: str = "Single sign-on"
     proxy_enabled: bool
 
 

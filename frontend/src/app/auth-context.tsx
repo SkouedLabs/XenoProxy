@@ -45,7 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const methodsQuery = useQuery({
     queryKey: ['auth', 'methods'],
     queryFn: () => api.get<AuthMethods>('/auth/methods'),
-    staleTime: 300_000,
+    // Read fresh whenever the sign-in page mounts: an administrator who has
+    // just turned single sign-on on signs out to try it.
+    staleTime: 0,
   });
 
   const signInMutation = useMutation({

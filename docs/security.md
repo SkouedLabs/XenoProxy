@@ -25,6 +25,10 @@ cloud-metadata destinations unless `BACKEND_ALLOW_PRIVATE_TARGETS` is set for a 
 internal analyzer. Redirects are refused unless a plugin opts in, and each hop is
 re-validated.
 
+`BACKEND_ALLOW_PRIVATE_TARGETS` governs the observables analysts submit. Destinations an
+administrator configures — the OIDC provider, the directory, connectors, webhooks and the
+assistant's inference server — may be internal, and cloud-metadata addresses stay refused for them.
+
 The same validation applies to the observables a pivot derives, so a pivot cannot be used
 to reach an internal address through a crafted DNS record.
 

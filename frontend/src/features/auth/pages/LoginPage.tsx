@@ -272,7 +272,7 @@ export function LoginPage() {
                     className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface-raised text-sm font-medium shadow-sm transition-colors duration-fast ease-out hover:border-border-strong hover:bg-surface-overlay"
                   >
                     <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
-                    Sign in with single sign-on
+                    Sign in with {methods.oidc_label || 'single sign-on'}
                   </a>
                 </>
               ) : null}

@@ -62,8 +62,12 @@ def _tls_context(ca_bundle: str) -> ssl.SSLContext:
     return context
 
 
-def _connect(settings: Any, ca_bundle: str) -> Any:
-    """Open the connection. Synchronous, so callers run it in a thread."""
+def _server(settings: Any, ca_bundle: str) -> Any:
+    """The directory endpoint, with certificate verification always on.
+
+    Every connection goes through here, the user bind included: an ldap3
+    server built without its own `Tls` does not verify the peer at all.
+    """
     try:
         import ldap3
         from ldap3.core.tls import Tls
@@ -75,13 +79,20 @@ def _connect(settings: Any, ca_bundle: str) -> Any:
         version=ssl.PROTOCOL_TLS_CLIENT,
         ssl_context=_tls_context(ca_bundle),
     )
-    server = ldap3.Server(
+    return ldap3.Server(
         settings.server_url,
         use_ssl=settings.server_url.lower().startswith("ldaps://"),
         get_info=ldap3.NONE,
         connect_timeout=settings.timeout,
         tls=tls,
     )
+
+
+def _connect(settings: Any, ca_bundle: str) -> Any:
+    """Open the connection. Synchronous, so callers run it in a thread."""
+    import ldap3
+
+    server = _server(settings, ca_bundle)
     connection = ldap3.Connection(
         server,
         user=settings.bind_dn or None,
@@ -184,17 +195,17 @@ def _authenticate(settings: Any, ca_bundle: str, username: str, password: str) -
 
     # The password is checked by binding with it; the directory is the only
     # thing that may decide whether it is right.
-    server = ldap3.Server(
-        settings.server_url,
-        use_ssl=settings.server_url.lower().startswith("ldaps://"),
-        get_info=ldap3.NONE,
-        connect_timeout=settings.timeout,
-    )
+    server = _server(settings, ca_bundle)
     as_user = ldap3.Connection(
-        server, user=user["dn"], password=password, auto_bind=False, raise_exceptions=False
+        server,
+        user=user["dn"],
+        password=password,
+        auto_bind=False,
+        receive_timeout=settings.timeout,
+        raise_exceptions=False,
     )
-    if settings.start_tls and not server.ssl:
-        as_user.start_tls()
+    if settings.start_tls and not server.ssl and not as_user.start_tls():
+        raise DirectoryError(f"StartTLS was refused: {as_user.last_error}")
     if not as_user.bind():
         raise DirectoryError("invalid credentials")
     as_user.unbind()

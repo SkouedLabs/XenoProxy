@@ -16,7 +16,7 @@ export type Verdict = 'unknown' | 'clean' | 'suspicious' | 'malicious';
 export type Tlp = 'clear' | 'green' | 'amber' | 'red';
 export type ScanMode = 'reuse_recent' | 'force_new';
 export type Role = 'analyst' | 'admin';
-export type AuthSource = 'local' | 'oidc' | 'proxy';
+export type AuthSource = 'local' | 'oidc' | 'ldap' | 'proxy';
 
 export interface CurrentUser {
   id: string;
@@ -62,6 +62,7 @@ export interface MfaEnrolment {
 export interface AuthMethods {
   local_enabled: boolean;
   oidc_enabled: boolean;
+  oidc_label: string;
   proxy_enabled: boolean;
 }
 

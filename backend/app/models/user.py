@@ -34,6 +34,7 @@ class Role(StrEnum):
 class AuthSource(StrEnum):
     LOCAL = "local"
     OIDC = "oidc"
+    LDAP = "ldap"
     PROXY = "proxy"
 
 
