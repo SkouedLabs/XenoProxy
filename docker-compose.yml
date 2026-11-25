@@ -197,7 +197,7 @@ services:
     environment:
       BACKEND_ENVIRONMENT: production
       BACKEND_LOG_LEVEL: INFO
-      BACKEND_PUBLIC_URL: http://localhost:8099
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8099}
       BACKEND_DOCS_ENABLED: "false"
       BACKEND_DB_HOST: database
       BACKEND_DB_NAME: xenoproxy

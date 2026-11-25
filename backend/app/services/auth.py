@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.crypto import hash_password, new_token, token_fingerprint, verify_password
@@ -211,7 +212,9 @@ async def upsert_federated_user(
         raise UnauthorizedError("The identity provider supplied no username.")
 
     user = (
-        await session.execute(select(User).where(User.username == normalised))
+        await session.execute(
+            select(User).where(User.username == normalised).options(selectinload(User.groups))
+        )
     ).scalar_one_or_none()
 
     # The legacy single-group setting still grants administration when it
@@ -230,6 +233,7 @@ async def upsert_federated_user(
             role=resolution.role,
             auth_source=source,
             is_active=True,
+            groups=[],
         )
         session.add(user)
     else:
