@@ -19,6 +19,7 @@ import {
   FileText,
   Camera,
   GitBranch,
+  Network,
   Paperclip,
   RefreshCw,
   RotateCcw,
@@ -28,7 +29,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { PageHeader } from '@/app/AppShell';
 import { Badge, Button, Card, ErrorBanner, Skeleton } from '@/components/ui';
@@ -510,6 +511,7 @@ function PhaseTable({
 export function JobDetailPage() {
   const { jobId = '' } = useParams();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [exporting, setExporting] = useState<'json' | 'markdown' | null>(null);
@@ -634,6 +636,12 @@ export function JobDetailPage() {
                 Stop
               </Button>
             ) : null}
+            <Button
+              onClick={() => navigate(`/jobs/${job.id}/recap`)}
+              icon={<Network className="h-4 w-4" aria-hidden />}
+            >
+              Recap
+            </Button>
             <Button
               onClick={() => void download('markdown')}
               loading={exporting === 'markdown'}

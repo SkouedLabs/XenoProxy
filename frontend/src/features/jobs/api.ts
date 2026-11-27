@@ -4,10 +4,84 @@ import { api, apiDownload } from '@/lib/api-client';
 import type {
   JobDetail,
   JobStats,
+  JobStatus,
   JobSummary,
+  ObservableType,
   Page,
   PluginReportDetail,
+  PluginType,
+  ReportStatus,
+  Tlp,
+  Verdict,
 } from '@/lib/types';
+
+export interface GraphNode {
+  id: string;
+  kind: string;
+  label: string;
+  data: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  plugin: string | null;
+}
+
+export interface RelationGraphData {
+  root: string | null;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
+export interface RecapVerdictLine {
+  job_id: string;
+  observable_value: string;
+  plugin_name: string;
+  plugin_type: PluginType;
+  status: ReportStatus;
+  verdict: Verdict;
+  detection_ratio: string | null;
+  headline: string | null;
+  links: { label?: string; url?: string }[];
+}
+
+export interface Recap {
+  subject: {
+    job_id: string;
+    observable_value: string;
+    observable_type: ObservableType;
+    status: JobStatus;
+    verdict: Verdict;
+    tlp: Tlp;
+    tags: string[];
+    requested_by_name: string;
+    created_at: string;
+    finished_at: string | null;
+    jobs: number;
+    reports: number;
+  };
+  network: {
+    ips: string[];
+    domains: string[];
+    asns: string[];
+    countries: string[];
+    cities: string[];
+    ports: string[];
+    technologies: string[];
+    cves: string[];
+  };
+  certificates: {
+    names: string[];
+    issuers: string[];
+    certificates: Record<string, unknown>[];
+  };
+  registration: { registrars: string[]; contacts: string[]; prefixes: string[] };
+  verdicts: RecapVerdictLine[];
+  graph: RelationGraphData;
+}
 
 export interface JobFilters {
   page: number;
@@ -28,6 +102,7 @@ export const jobsApi = {
   list: (filters: JobFilters) => api.get<Page<JobSummary>>('/jobs', { ...filters }),
   get: (jobId: string) => api.get<JobDetail>(`/jobs/${jobId}`),
   children: (jobId: string) => api.get<JobSummary[]>(`/jobs/${jobId}/children`),
+  recap: (jobId: string) => api.get<Recap>(`/jobs/${jobId}/recap`),
   report: (jobId: string, pluginName: string) =>
     api.get<PluginReportDetail>(`/jobs/${jobId}/reports/${pluginName}`),
   updateTags: (jobId: string, tags: string[]) =>

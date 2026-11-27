@@ -157,3 +157,83 @@ class JobDetailOut(JobSummaryOut):
 
 class JobTagsUpdate(StrictModel):
     tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class GraphNodeOut(BaseModel):
+    id: str
+    kind: str
+    label: str
+    data: dict[str, Any]
+
+
+class GraphEdgeOut(BaseModel):
+    source: str
+    target: str
+    relation: str
+    plugin: str | None
+
+
+class GraphOut(BaseModel):
+    root: str | None
+    nodes: list[GraphNodeOut]
+    edges: list[GraphEdgeOut]
+    truncated: bool
+
+
+class RecapSubject(BaseModel):
+    job_id: uuid.UUID
+    observable_value: str
+    observable_type: ObservableType
+    status: JobStatus
+    verdict: Verdict
+    tlp: Tlp
+    tags: list[str]
+    requested_by_name: str
+    created_at: datetime
+    finished_at: datetime | None
+    jobs: int
+    reports: int
+
+
+class RecapNetwork(BaseModel):
+    ips: list[str]
+    domains: list[str]
+    asns: list[str]
+    countries: list[str]
+    cities: list[str]
+    ports: list[str]
+    technologies: list[str]
+    cves: list[str]
+
+
+class RecapCertificates(BaseModel):
+    names: list[str]
+    issuers: list[str]
+    certificates: list[dict[str, Any]]
+
+
+class RecapRegistration(BaseModel):
+    registrars: list[str]
+    contacts: list[str]
+    prefixes: list[str]
+
+
+class RecapVerdictLine(BaseModel):
+    job_id: uuid.UUID
+    observable_value: str
+    plugin_name: str
+    plugin_type: PluginKind
+    status: ReportStatus
+    verdict: str
+    detection_ratio: str | None
+    headline: str | None
+    links: list[dict[str, Any]]
+
+
+class RecapOut(BaseModel):
+    subject: RecapSubject
+    network: RecapNetwork
+    certificates: RecapCertificates
+    registration: RecapRegistration
+    verdicts: list[RecapVerdictLine]
+    graph: GraphOut

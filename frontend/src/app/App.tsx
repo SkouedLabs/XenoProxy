@@ -17,6 +17,7 @@ import { SetupPage } from '@/features/auth/pages/SetupPage';
 import { SettingsPage } from '@/features/auth/pages/SettingsPage';
 import { DashboardPage } from '@/features/jobs/pages/DashboardPage';
 import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
+import { RecapPage } from '@/features/jobs/pages/RecapPage';
 import { JobsPage } from '@/features/jobs/pages/JobsPage';
 import { NewScanPage } from '@/features/scan/pages/NewScanPage';
 import { ApiError } from '@/lib/api-client';
@@ -77,6 +78,7 @@ function AuthenticatedRoutes() {
         <Route path="/scan" element={<NewScanPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:jobId" element={<JobDetailPage />} />
+        <Route path="/jobs/:jobId/recap" element={<RecapPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />

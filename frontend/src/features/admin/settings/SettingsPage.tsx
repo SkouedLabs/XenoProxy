@@ -337,30 +337,32 @@ export function InstanceSettingsPage() {
               saving={scalarMutation.isPending}
             />
           ) : (
-            <SectionForm
-              key={tab.id}
-              name={tab.id}
-              schema={config.section_schemas[tab.id] ?? { properties: {} }}
-              stored={config.sections[tab.id] ?? {}}
-              managed={managed}
-              saving={sectionMutation.isPending}
-              testing={testMutation.isPending}
-              testTarget={tab.testTarget}
-              hidden={tab.id === 'assistant' ? PROFILE_OWNED : undefined}
-              onSave={(values) => sectionMutation.mutate(values)}
-              onTest={
-                tab.testable
-                  ? (values, target) => testMutation.mutate({ values, target })
-                  : undefined
-              }
-            >
+            <>
               {tab.id === 'assistant' ? <AssistantProfiles /> : null}
-              {tab.id === 'network' ? (
-                <p className="mb-4 text-xs text-muted">
-                  In force now: {config.outbound_route}
-                </p>
-              ) : null}
-            </SectionForm>
+              <SectionForm
+                key={tab.id}
+                name={tab.id}
+                schema={config.section_schemas[tab.id] ?? { properties: {} }}
+                stored={config.sections[tab.id] ?? {}}
+                managed={managed}
+                saving={sectionMutation.isPending}
+                testing={testMutation.isPending}
+                testTarget={tab.testTarget}
+                hidden={tab.id === 'assistant' ? PROFILE_OWNED : undefined}
+                onSave={(values) => sectionMutation.mutate(values)}
+                onTest={
+                  tab.testable
+                    ? (values, target) => testMutation.mutate({ values, target })
+                    : undefined
+                }
+              >
+                {tab.id === 'network' ? (
+                  <p className="mb-4 text-xs text-muted">
+                    In force now: {config.outbound_route}
+                  </p>
+                ) : null}
+              </SectionForm>
+            </>
           )}
 
           {probeResult ? <ProbeOutcome result={probeResult} /> : null}

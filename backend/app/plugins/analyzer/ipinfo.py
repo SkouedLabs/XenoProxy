@@ -104,6 +104,8 @@ class IpInfoAnalyzer(BaseAnalyzer):
             + self.resolved_note(observable, address),
             links=[{"label": "Open in IPinfo", "url": f"https://ipinfo.io/{address}"}],
             extra={
+                "city": raw.get("city"),
+                "region": raw.get("region"),
                 "loc": raw.get("loc"),
                 "timezone": raw.get("timezone"),
                 "postal": raw.get("postal"),

@@ -45,12 +45,14 @@ from app.schemas.jobs import (
     ObservablePreviewRequest,
     PluginReportDetail,
     PluginReportOut,
+    RecapOut,
 )
 from app.services import (
     archives,
     audit,
     job_control,
     orchestrator,
+    recap,
     reports,
     settings_store,
     uploads,
@@ -562,6 +564,44 @@ async def get_children(
         )
     ).scalars()
     return [_job_summary(job) for job in rows]
+
+
+MAX_RECAP_JOBS = 200
+
+
+async def _investigation(session: DbSession, root: Job, user: User) -> list[Job]:
+    """The root and every pivot below it that this user may see, breadth first."""
+    jobs = [root]
+    seen = {root.id}
+    frontier = [root.id]
+    while frontier and len(jobs) < MAX_RECAP_JOBS:
+        rows = (
+            await session.execute(
+                _visible_jobs(user)
+                .where(Job.parent_job_id.in_(frontier))
+                .order_by(Job.created_at)
+                .options(selectinload(Job.reports))
+            )
+        ).scalars()
+        frontier = []
+        for job in rows:
+            if job.id not in seen and len(jobs) < MAX_RECAP_JOBS:
+                seen.add(job.id)
+                jobs.append(job)
+                frontier.append(job.id)
+    return jobs
+
+
+@router.get(
+    "/{job_id}/recap",
+    response_model=RecapOut,
+    summary="Facts and relation graph for a job and the pivots below it",
+)
+async def get_recap(job_id: uuid.UUID, session: DbSession, user: AnalystUser) -> RecapOut:
+    """Built from stored summaries only: no provider is called and no quota is spent."""
+    root = await _load_job(session, job_id, user)
+    jobs = await _investigation(session, root, user)
+    return RecapOut.model_validate(recap.build_recap(root, jobs))
 
 
 @router.get(

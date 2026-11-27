@@ -10,7 +10,7 @@ pytest — and they are read-only. So the checks run in their own containers.
 **Frontend**, against the working tree:
 
 ```bash
-docker run --rm -v "$PWD/frontend:/w" -w /w node:22.21.0-alpine3.22 \
+docker run --rm -v "$PWD/frontend:/w" -w /w node:26.13.1-alpine3.23 \
   sh -c "npm ci && npx tsc --noEmit && npx eslint src && npm run build"
 ```
 

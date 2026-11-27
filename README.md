@@ -5,7 +5,7 @@
 [![CI](https://github.com/skouedlabs/XenoProxy/actions/workflows/ci.yml/badge.svg)](https://github.com/skouedlabs/XenoProxy/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](backend/pyproject.toml)
-[![Node 22](https://img.shields.io/badge/node-22-blue.svg)](frontend/package.json)
+[![Node 26](https://img.shields.io/badge/node-26-blue.svg)](frontend/package.json)
 [![Documentation](https://img.shields.io/badge/docs-docs%2FREADME.md-informational.svg)](docs/README.md)
 
 **One interface over every OSINT source your team pays for.** Submit an observable — an
