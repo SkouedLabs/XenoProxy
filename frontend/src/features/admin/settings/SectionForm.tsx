@@ -78,6 +78,8 @@ export function SectionForm({
   testing,
   testTarget,
   hidden,
+  owned,
+  extra,
   children,
 }: {
   name: string;
@@ -92,6 +94,14 @@ export function SectionForm({
   testTarget?: { label: string; placeholder: string; required?: boolean };
   /** Fields another control already owns, so the form does not offer them twice. */
   hidden?: readonly string[];
+  /** Hidden fields an `extra` editor changes: they are saved with the rest of the form. */
+  owned?: readonly string[];
+  /** A purpose-built editor for fields the generic inputs cannot express. */
+  extra?: (context: {
+    draft: SectionValues;
+    stored: SectionValues;
+    set: (key: string, value: unknown) => void;
+  }) => React.ReactNode;
   children?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState<SectionValues>(() => ({ ...stored }));
@@ -144,6 +154,7 @@ export function SectionForm({
       }
       payload[key] = draft[key];
     }
+    for (const key of owned ?? []) payload[key] = draft[key];
     onSave(payload);
   }
 
@@ -330,6 +341,8 @@ export function SectionForm({
           </Field>
         ))}
       </div>
+
+      {extra ? extra({ draft, stored, set }) : null}
 
       {testTarget ? (
         <Field label={testTarget.label} htmlFor={`${name}-probe-target`} className="mb-0">

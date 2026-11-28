@@ -48,6 +48,10 @@ class JobCreate(StrictModel):
     runtime_configuration: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # Kept for existing callers: equivalent to scan_mode = force_new.
     force_rescan: bool = False
+    # Send every request of this job through a proxy profile. With no profile named,
+    # every configured profile is used and the analyzers are spread over them.
+    through_proxy: bool = False
+    proxy_profiles: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("analyzers", "connectors", "pivots", "plugins", "tags")
     @classmethod
@@ -72,6 +76,13 @@ class PluginAvailability(BaseModel):
     reason: str | None = None
 
 
+class ProxyChoice(BaseModel):
+    """A proxy profile a scan may be forced through: its name only, never its address."""
+
+    name: str
+    red_approved: bool
+
+
 class ObservablePreview(BaseModel):
     value: str
     type: ObservableType
@@ -88,6 +99,7 @@ class ObservablePreview(BaseModel):
     unavailable_plugins: list[dict[str, str]]
     auto_select: bool
     default_scan_mode: ScanMode
+    proxy_profiles: list[ProxyChoice] = Field(default_factory=list)
 
 
 class PluginReportOut(BaseModel):
@@ -173,6 +185,7 @@ class JobDetailOut(JobSummaryOut):
     scan_mode: ScanMode
     scan_check_minutes: int | None
     runtime_configuration: dict[str, Any]
+    proxy_profiles: list[str] = Field(default_factory=list)
     summary: dict[str, Any]
     started_at: datetime | None
     sample: SampleOut | None = None

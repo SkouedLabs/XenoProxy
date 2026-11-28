@@ -19,7 +19,10 @@
 4. Add tags if the job belongs to an incident. They make it findable later.
 5. Tick **Force a refresh** only when you need fresh data: it bypasses the cache
    and spends an API quota on every selected source.
-6. Run the analysis. The job page updates itself until every plugin finishes.
+6. Tick **Send every request through a proxy** (off by default, shown only when the
+   administrator configured proxy profiles) and pick the profiles. Several profiles are
+   spread over the analyzers; one profile carries everything. Page captures are not covered.
+7. Run the analysis. The job page updates itself until every plugin finishes.
    **Stop** halts a run you launched by mistake: nothing further starts, and the
    results already in are kept.
 
@@ -90,6 +93,8 @@ The answer is `201` with the job and its `id`. Only `observable` is required.
 | `tags` | Up to 20 tags |
 | `tlp` | `CLEAR`, `GREEN`, `AMBER` or `RED`: caps what may touch the observable |
 | `scan_mode` | `force_new` to bypass the cache, like **Force a refresh** |
+| `through_proxy` | `true` sends every request of the job through proxy profiles (default `false`) |
+| `proxy_profiles` | names of the profiles to use; empty with `through_proxy` means all of them, spread per analyzer. Under TLP:RED only profiles approved for RED are accepted |
 | `runtime_configuration` | Option overrides for this job only, keyed by plugin name |
 
 With neither `playbook` nor `analyzers`, every analyzer that supports the type runs.

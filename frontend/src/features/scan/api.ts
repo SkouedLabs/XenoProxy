@@ -22,6 +22,9 @@ export interface SubmitPayload {
   playbook: string | null;
   tags: string[];
   force_rescan: boolean;
+  /** Send every request of the job through proxy profiles; none named means all. */
+  through_proxy: boolean;
+  proxy_profiles: string[];
 }
 
 export const scanApi = {

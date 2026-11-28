@@ -45,6 +45,7 @@ from app.schemas.jobs import (
     ObservablePreviewRequest,
     PluginReportDetail,
     PluginReportOut,
+    ProxyChoice,
     RecapOut,
     SampleOut,
 )
@@ -131,6 +132,10 @@ async def preview(
         unavailable_plugins=unavailable,
         auto_select=bool(stored["auto_select_analyzers"]),
         default_scan_mode=ScanMode(stored["default_scan_mode"]),
+        proxy_profiles=[
+            ProxyChoice(name=name, red_approved=approved)
+            for name, approved in sorted(http_client.available_profiles())
+        ],
     )
 
 
@@ -156,6 +161,8 @@ async def create_job(
         scan_mode=payload.scan_mode or (ScanMode.FORCE_NEW if payload.force_rescan else None),
         scan_check_minutes=payload.scan_check_minutes,
         runtime_configuration=payload.runtime_configuration,
+        through_proxy=payload.through_proxy,
+        proxy_profiles=payload.proxy_profiles,
     )
     job = await orchestrator.create_job(
         session,
@@ -180,6 +187,7 @@ async def create_job(
             "tlp": job_request.tlp.value,
             "scan_mode": job_request.scan_mode.value,
             "auto_selected": job_request.auto_selected,
+            "proxy_profiles": job_request.proxy_profiles,
             "skipped": [entry.as_dict() for entry in job_request.skipped],
         },
     )
@@ -300,6 +308,8 @@ async def create_file_job(
         scan_mode=choices.scan_mode or (ScanMode.FORCE_NEW if choices.force_rescan else None),
         scan_check_minutes=choices.scan_check_minutes,
         runtime_configuration=choices.runtime_configuration,
+        through_proxy=choices.through_proxy,
+        proxy_profiles=choices.proxy_profiles,
     )
     job = await orchestrator.create_job(
         session,
@@ -894,6 +904,8 @@ async def rerun_job(
         scan_mode=ScanMode.FORCE_NEW,
         runtime_configuration=dict(source.runtime_configuration or {}),
         has_sample=bool(source.file_path),
+        through_proxy=bool(source.proxy_profiles),
+        proxy_profiles=list(source.proxy_profiles or []),
     )
     job = await orchestrator.create_job(
         session,
@@ -1024,6 +1036,7 @@ def _job_detail(job: Job) -> JobDetailOut:
         scan_mode=job.scan_mode,
         scan_check_minutes=job.scan_check_minutes,
         runtime_configuration=dict(job.runtime_configuration or {}),
+        proxy_profiles=list(job.proxy_profiles or []),
         summary=job.summary or {},
         started_at=job.started_at,
         sample=SampleOut.model_validate(job.sample, from_attributes=True) if job.sample else None,

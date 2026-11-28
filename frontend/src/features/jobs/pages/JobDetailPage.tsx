@@ -701,6 +701,9 @@ export function JobDetailPage() {
           <Badge tone="neutral">TLP:{job.tlp.toUpperCase()}</Badge>
           {job.playbook_name ? <Badge tone="primary">{job.playbook_name}</Badge> : null}
           {job.force_rescan ? <Badge tone="warning">Cache bypassed</Badge> : null}
+          {job.proxy_profiles?.length ? (
+            <Badge tone="info">Via proxy: {job.proxy_profiles.join(', ')}</Badge>
+          ) : null}
           {(job.summary?.analyzers_from_cache ?? 0) > 0 ? (
             <Badge tone="info">
               <Database className="h-3 w-3" aria-hidden />

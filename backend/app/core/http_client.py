@@ -18,7 +18,8 @@ from __future__ import annotations
 import ipaddress
 import socket
 import ssl
-from collections.abc import Iterator
+import zlib
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -148,19 +149,26 @@ _profiles: dict[str, _Profile] = {}
 _assignments: dict[str, str] = {}
 _default_profile = ""
 
-# (analyzer name, TLP of the job) for the work running in this task. A request
-# made outside an analyzer carries no scope and uses the default profile.
-_scope: ContextVar[tuple[str, str] | None] = ContextVar("outbound_scope", default=None)
+# (analyzer name, TLP of the job, profiles the job was forced through) for the work
+# running in this task. A request made outside an analyzer carries no scope and uses
+# the default profile.
+_scope: ContextVar[tuple[str, str, tuple[str, ...]] | None] = ContextVar(
+    "outbound_scope", default=None
+)
 
 
 @contextmanager
-def analyzer_scope(analyzer: str, tlp: Any) -> Iterator[None]:
+def analyzer_scope(analyzer: str, tlp: Any, through: Sequence[str] = ()) -> Iterator[None]:
     """Route every request made in this block according to the analyzer's proxy.
 
     The orchestrator wraps each plugin run in it. The scope lives in a context
     variable, so concurrent analyzers of one job each keep their own route.
+
+    `through` is the job's own choice of proxy profiles, made when the analysis was
+    submitted. When it is not empty it replaces the analyzer assignments and the
+    default: every request of the job leaves through one of those profiles.
     """
-    token = _scope.set((analyzer, str(getattr(tlp, "value", tlp)).lower()))
+    token = _scope.set((analyzer, str(getattr(tlp, "value", tlp)).lower(), tuple(through)))
     try:
         yield
     finally:
@@ -169,8 +177,13 @@ def analyzer_scope(analyzer: str, tlp: Any) -> Iterator[None]:
 
 def _chosen_profile() -> _Profile | None:
     scope = _scope.get()
-    analyzer, tlp = scope if scope else ("", "")
-    name = _assignments.get(analyzer, "") or _default_profile
+    analyzer, tlp, through = scope if scope else ("", "", ())
+    if through:
+        # Several profiles spread the analyzers over them, always the same way for
+        # the same analyzer, so a retry keeps using the same tunnel.
+        name = through[zlib.crc32(analyzer.encode()) % len(through)]
+    else:
+        name = _assignments.get(analyzer, "") or _default_profile
     if not name:
         return None
     profile = _profiles.get(name)
@@ -183,6 +196,14 @@ def _chosen_profile() -> _Profile | None:
             f"the proxy profile '{name}' is not approved for TLP:RED material"
         )
     return profile
+
+
+def available_profiles() -> list[tuple[str, bool]]:
+    """The profile names a job may choose, each with whether it is approved for RED.
+
+    Names and approval only: the address and the credentials never leave here.
+    """
+    return [(profile.name, profile.red_approved) for profile in _profiles.values()]
 
 
 def capture_proxy(tlp: Any) -> str | None:

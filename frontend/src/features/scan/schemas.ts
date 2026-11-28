@@ -45,6 +45,8 @@ export const scanFormSchema = z
       .array(z.string().min(1).max(64))
       .max(MAX_TAGS, `A job cannot carry more than ${MAX_TAGS} tags.`),
     force_rescan: z.boolean(),
+    through_proxy: z.boolean(),
+    proxy_profiles: z.array(z.string().min(1).max(64)).max(20),
   })
   .refine((value) => value.analyzers.length > 0 || value.playbook !== null, {
     message: 'Select at least one analyzer or a playbook.',

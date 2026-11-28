@@ -200,6 +200,7 @@ export interface JobDetail extends JobSummary {
   requested_connectors: string[];
   requested_pivots: string[];
   force_rescan: boolean;
+  proxy_profiles?: string[];
   summary: {
     tags?: string[];
     open_ports?: number[];
@@ -244,6 +245,8 @@ export interface ObservablePreview {
   unavailable_analyzers: { name: string; type: PluginType; reason: string }[];
   unavailable_plugins: { name: string; type: PluginType; reason: string }[];
   auto_select: boolean;
+  /** The proxy profiles a scan may be forced through: names only. */
+  proxy_profiles: { name: string; red_approved: boolean }[];
 }
 
 /** Who serves a plugin, and what configuring it requires. */

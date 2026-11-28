@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -148,6 +148,11 @@ class Job(Base):
     # Per-request analyzer options, keyed by analyzer name. They override the
     # stored configuration for this job only.
     runtime_configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    # Proxy profiles the submitter forced for every request of this job; empty means
+    # the normal routing (analyzer assignments, then the default profile).
+    proxy_profiles: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     # Groups that may see this job when the TLP restricts visibility.
     visible_to_group_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID(as_uuid=True)), default=list

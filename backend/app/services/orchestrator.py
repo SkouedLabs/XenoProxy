@@ -132,6 +132,8 @@ class JobRequest:
     parent_job_id: uuid.UUID | None = None
     pivot_name: str | None = None
     depth: int = 0
+    # Proxy profiles the submitter chose for every request of this job, if any.
+    proxy_profiles: list[str] = field(default_factory=list)
 
     @property
     def force_rescan(self) -> bool:
@@ -275,6 +277,8 @@ async def resolve_selection(
     pivot_name: str | None = None,
     depth: int = 0,
     has_sample: bool = False,
+    through_proxy: bool = False,
+    proxy_profiles: list[str] | None = None,
 ) -> JobRequest:
     """Classify the observable and resolve which plugins will actually run.
 
@@ -374,6 +378,7 @@ async def resolve_selection(
         raise ValidationFailedError(f"A job cannot run more than {maximum} analyzers.")
 
     overrides = _validate_runtime_configuration(runtime_configuration, selection)
+    chosen_profiles = _validate_proxy_route(through_proxy, proxy_profiles, effective_tlp)
     normalised_tags = sorted({tag.strip().lower()[:64] for tag in tags or [] if tag.strip()})
 
     return JobRequest(
@@ -390,7 +395,33 @@ async def resolve_selection(
         parent_job_id=parent_job_id,
         pivot_name=pivot_name,
         depth=depth,
+        proxy_profiles=chosen_profiles,
     )
+
+
+def _validate_proxy_route(through_proxy: bool, requested: list[str] | None, tlp: Tlp) -> list[str]:
+    """The profiles a job is forced through; empty when it keeps the normal routing.
+
+    Ticking the box without naming a profile means every profile available. Under
+    TLP:RED only a profile approved for it may be chosen, since a RED job must
+    never leave through a tunnel nobody vouched for.
+    """
+    if not through_proxy:
+        return []
+    available = dict(http_client.available_profiles())
+    if not available:
+        raise ValidationFailedError("No proxy profile is configured.")
+    names = list(dict.fromkeys(requested or [])) or sorted(available)
+    unknown = [name for name in names if name not in available]
+    if unknown:
+        raise ValidationFailedError(f"Unknown proxy profile: {', '.join(sorted(unknown))}.")
+    if tlp is Tlp.RED:
+        refused = [name for name in names if not available[name]]
+        if refused:
+            raise ValidationFailedError(
+                f"Profile not approved for TLP:RED: {', '.join(sorted(refused))}."
+            )
+    return names
 
 
 def _validate_runtime_configuration(
@@ -454,6 +485,7 @@ async def create_job(
         parent_job_id=request.parent_job_id,
         pivot_name=request.pivot_name,
         depth=request.depth,
+        proxy_profiles=list(request.proxy_profiles),
         origin=origin,
         requested_by_id=requested_by.id if requested_by else None,
         requested_by_name=requested_by_name,
@@ -549,6 +581,7 @@ class _JobPlan:
     # Where the submitted sample lives, when the job carries one.
     file_path: str | None = None
     file_name: str | None = None
+    proxy_profiles: tuple[str, ...] = ()
 
     @classmethod
     def from_job(cls, job: Job) -> _JobPlan:
@@ -566,6 +599,7 @@ class _JobPlan:
             depth=job.depth,
             file_path=job.file_path,
             file_name=job.file_name,
+            proxy_profiles=tuple(job.proxy_profiles or ()),
             requested_by_id=job.requested_by_id,
             requested_by_name=job.requested_by_name,
         )
@@ -698,7 +732,7 @@ async def _run_analyzer(
     report.status = ReportStatus.RUNNING
     await session.commit()
 
-    with http_client.analyzer_scope(plugin_name, plan.tlp):
+    with http_client.analyzer_scope(plugin_name, plan.tlp, plan.proxy_profiles):
         result = await built.plugin.execute(plan.observable)
     await _store_result(session, report_id, result)
 
@@ -801,7 +835,7 @@ async def _run_connector_phase(
                     return
 
                 await _mark(session, report_id, ReportStatus.RUNNING, None)
-                with http_client.analyzer_scope(plugin_name, plan.tlp):
+                with http_client.analyzer_scope(plugin_name, plan.tlp, plan.proxy_profiles):
                     result = await connector.execute(context)
                 await _store_result(session, report_id, result)
             except Exception as exc:
@@ -874,7 +908,7 @@ async def _run_pivot_phase(
                     continue
 
                 await _mark(session, report_id, ReportStatus.RUNNING, None)
-                with http_client.analyzer_scope(plugin_name, plan.tlp):
+                with http_client.analyzer_scope(plugin_name, plan.tlp, plan.proxy_profiles):
                     result = await pivot.execute(context)
             except Exception as exc:
                 logger.error("pivot_crashed", plugin=plugin_name, error=str(exc))

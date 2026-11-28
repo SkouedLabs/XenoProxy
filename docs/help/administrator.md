@@ -365,14 +365,14 @@ own `send_file` option in its configuration. Either one off keeps the file in.
 
 ## Outbound proxies
 
-**Settings › Network** holds a set of proxy profiles: HTTP, HTTPS, SOCKS5 (with or without
+**Settings › Network** holds a set of proxy profiles, created and edited in the page itself (type, host, port, user name, password): HTTP, HTTPS, SOCKS5 (with or without
 user name and password) and SOCKS5h. SOCKS4 and SOCKS4A are refused, because the HTTP client
 does not speak them. Passwords are stored encrypted and never shown again.
 
 A profile is chosen per analysis: each analyzer can be assigned a profile, and a default
 profile applies to the rest. This is how traffic that must not leave from the server's own
 address is sent through your machine or a VPN exit. A profile marked **approved for RED**
-is the only kind that TLP:RED material may use; with no such profile, a RED analysis that
+is the only kind that TLP:RED material may use; the scan form can also force one analysis through chosen profiles, which then override the assignments and the default; with no such profile, a RED analysis that
 needs the network is refused instead of leaving the deployment.
 
 ## Screenshots (alpha)

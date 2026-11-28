@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api-client';
 import type { ProbeResult, SectionValues } from '@/lib/types';
 import { ScalarSection } from './ScalarSection';
 import { AssistantProfiles, PROFILE_OWNED } from './AssistantProfiles';
+import { PROXY_OWNED, ProxyProfiles } from './ProxyProfiles';
 import { SectionForm } from './SectionForm';
 import { settingsApi } from './api';
 
@@ -348,7 +349,13 @@ export function InstanceSettingsPage() {
                 saving={sectionMutation.isPending}
                 testing={testMutation.isPending}
                 testTarget={tab.testTarget}
-                hidden={tab.id === 'assistant' ? PROFILE_OWNED : undefined}
+                hidden={
+                  tab.id === 'assistant' ? PROFILE_OWNED : tab.id === 'network' ? PROXY_OWNED : undefined
+                }
+                owned={tab.id === 'network' ? PROXY_OWNED : undefined}
+                extra={
+                  tab.id === 'network' ? (context) => <ProxyProfiles {...context} /> : undefined
+                }
                 onSave={(values) => sectionMutation.mutate(values)}
                 onTest={
                   tab.testable

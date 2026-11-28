@@ -99,6 +99,8 @@ export function NewScanPage() {
   const [playbook, setPlaybook] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [forceRescan, setForceRescan] = useState(false);
+  const [throughProxy, setThroughProxy] = useState(false);
+  const [chosenProxies, setChosenProxies] = useState<string[]>([]);
   const [sample, setSample] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   // Set once the user's default playbook has been applied, so reopening the
@@ -275,6 +277,16 @@ export function NewScanPage() {
       playbook,
       tags,
       force_rescan: forceRescan,
+      through_proxy: throughProxy,
+      proxy_profiles: throughProxy
+        ? chosenProxies.filter((name) =>
+            preview.proxy_profiles.some(
+              (entry) =>
+                entry.name === name &&
+                (preview.tlp.toUpperCase() !== 'RED' || entry.red_approved),
+            ),
+          )
+        : [],
     };
     const result = scanFormSchema.safeParse(candidate);
     if (!result.success) {
@@ -746,6 +758,42 @@ export function NewScanPage() {
               }
               description="Every selected source is queried again and consumes its API quota."
             />
+            {preview.proxy_profiles.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                <Toggle
+                  checked={throughProxy}
+                  onChange={setThroughProxy}
+                  label="Send every request through a proxy"
+                  description="Off by default. When on, this analysis ignores the analyzer assignments and the default profile. With nothing ticked below, every profile is used and the analyzers are spread over them."
+                />
+                {throughProxy ? (
+                  <fieldset className="ml-1 space-y-1.5">
+                    <legend className="text-xs text-muted">Proxies to use</legend>
+                    {preview.proxy_profiles.map((profile) => {
+                      const blocked = preview.tlp.toUpperCase() === 'RED' && !profile.red_approved;
+                      return (
+                        <label
+                          key={profile.name}
+                          className={`flex items-center gap-2 text-sm ${blocked ? 'opacity-50' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={blocked}
+                            checked={chosenProxies.includes(profile.name) && !blocked}
+                            onChange={() => toggleIn(setChosenProxies, profile.name)}
+                          />
+                          {profile.name}
+                          {profile.red_approved ? <Badge tone="warning">RED approved</Badge> : null}
+                          {blocked ? (
+                            <span className="text-xs text-muted">not approved for TLP:RED</span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                ) : null}
+              </div>
+            ) : null}
           </Card>
         </div>
       ) : null}
