@@ -6,7 +6,6 @@ import hashlib
 import json
 import time
 import uuid
-from collections import defaultdict, deque
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -18,6 +17,12 @@ from app.api.deps import client_ip
 from app.core.config import get_settings
 from app.core.errors import error_body
 from app.core.logging import get_logger, request_id_var
+from app.core.rate_limit import (
+    PUBLIC_SUBMISSION_LIMIT,
+    PUBLIC_SUBMISSION_PATH,
+    PUBLIC_SUBMISSION_WINDOW,
+    limiter,
+)
 
 logger = get_logger(__name__)
 
@@ -122,12 +127,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ("/api/v1/auth/api-keys", 20, 3600),
         ("/api/v1/jobs", 60, 60),
         # Anonymous submissions: each one spends the instance's API quotas.
-        ("/api/v1/public/submissions", 10, 3600),
+        (PUBLIC_SUBMISSION_PATH, PUBLIC_SUBMISSION_LIMIT, PUBLIC_SUBMISSION_WINDOW),
     )
-
-    def __init__(self, app: Any) -> None:
-        super().__init__(app)
-        self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.method not in _MUTATING:
@@ -143,18 +144,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Behind the reverse proxy the socket peer is the proxy itself, so every caller
         # would share one bucket. client_ip honours the configured trusted hops.
         identity = client_ip(request) or "unknown"
-        key = (rule[0], identity)
-        now = time.monotonic()
-        bucket = self._hits[key]
-        while bucket and now - bucket[0] > window:
-            bucket.popleft()
-        if len(bucket) >= limit:
+        wait = limiter.consume((rule[0], identity), limit, window)
+        if wait is not None:
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content=error_body("RATE_LIMITED", "Too many requests; retry later."),
-                headers={"Retry-After": str(window)},
+                headers={"Retry-After": str(max(1, int(wait) + 1))},
             )
-        bucket.append(now)
         return await call_next(request)
 
 

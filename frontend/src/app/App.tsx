@@ -20,6 +20,7 @@ import { DashboardPage } from '@/features/jobs/pages/DashboardPage';
 import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { RecapPage } from '@/features/jobs/pages/RecapPage';
 import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { PublicPage } from '@/features/public/PublicPage';
 import { NewScanPage } from '@/features/scan/pages/NewScanPage';
 import { ApiError } from '@/lib/api-client';
 import { AppShell } from './AppShell';
@@ -161,7 +162,10 @@ export function App() {
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
-              <AuthenticatedRoutes />
+              <Routes>
+                <Route path="/public" element={<PublicPage />} />
+                <Route path="*" element={<AuthenticatedRoutes />} />
+              </Routes>
             </AuthProvider>
           </ToastProvider>
         </ThemeProvider>

@@ -103,6 +103,10 @@ answer `404`.
 - `POST /api/v1/public/submissions` with `{"value": "..."}` returns `201` and the job's
   public view. Each caller is limited to 10 submissions per hour per client address. To enable it, see
   [Enabling public submission](help/administrator.md#enabling-public-submission).
+- `GET /api/v1/public/quota` returns `limit`, `remaining`, `window_seconds` and
+  `reset_seconds` for the caller, without spending anything. A web page for it is at `/public`.
+- When the administrator sets **Public submission: allowed addresses**, callers outside the list
+  get `403` on all three routes.
 - `GET /api/v1/public/submissions/{id}` returns the same view later, as the analysis
   completes. The random job identifier is the only key.
 

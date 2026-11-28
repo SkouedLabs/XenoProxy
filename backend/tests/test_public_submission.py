@@ -9,7 +9,7 @@ import pytest
 
 from app.api.v1 import public as public_module
 from app.api.v1.public import PUBLIC_PLAYBOOK, _public_view
-from app.core.errors import NotFoundError
+from app.core.errors import ForbiddenError, NotFoundError
 from app.models.job import JobOrigin, JobStatus, PluginKind, ReportStatus, Verdict
 from app.services.bootstrap import BUILTIN_PLAYBOOKS
 from app.services.settings_store import BY_KEY
@@ -89,13 +89,27 @@ async def test_the_routes_answer_not_found_while_the_switch_is_off(monkeypatch) 
 
     monkeypatch.setattr(public_module.settings_store, "get", off)
     with pytest.raises(NotFoundError):
-        await public_module._require_enabled(None)
+        await public_module._require_enabled(None, None)
 
 
 @pytest.mark.asyncio
 async def test_the_routes_open_when_the_switch_is_on(monkeypatch) -> None:
-    async def on(_session, _key):
-        return True
+    async def on(_session, key):
+        return True if key == "public_submission" else ""
 
     monkeypatch.setattr(public_module.settings_store, "get", on)
-    await public_module._require_enabled(None)
+    monkeypatch.setattr(public_module, "client_ip", lambda _request: None)
+    await public_module._require_enabled(None, None)
+
+
+@pytest.mark.asyncio
+async def test_an_address_outside_the_allow_list_is_refused(monkeypatch) -> None:
+    async def configured(_session, key):
+        return True if key == "public_submission" else "192.0.2.0/24"
+
+    monkeypatch.setattr(public_module.settings_store, "get", configured)
+    monkeypatch.setattr(public_module, "client_ip", lambda _request: "198.51.100.9")
+    with pytest.raises(ForbiddenError):
+        await public_module._require_enabled(None, None)
+    monkeypatch.setattr(public_module, "client_ip", lambda _request: "192.0.2.77")
+    await public_module._require_enabled(None, None)

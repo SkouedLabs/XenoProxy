@@ -9,6 +9,7 @@ the PUBLIC origin, so signed-in users can filter them in the history.
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 
 from fastapi import APIRouter, Request, status
@@ -16,9 +17,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, client_ip
-from app.core.errors import NotFoundError, ValidationFailedError
+from app.core.errors import ForbiddenError, NotFoundError, ValidationFailedError
+from app.core.rate_limit import (
+    PUBLIC_SUBMISSION_LIMIT,
+    PUBLIC_SUBMISSION_PATH,
+    PUBLIC_SUBMISSION_WINDOW,
+    limiter,
+)
 from app.models.job import Job, JobOrigin, PluginKind, Tlp
-from app.schemas.public import PublicSourceOut, PublicSubmissionIn, PublicSubmissionOut
+from app.schemas.public import (
+    PublicQuotaOut,
+    PublicSourceOut,
+    PublicSubmissionIn,
+    PublicSubmissionOut,
+)
 from app.services import audit, orchestrator, settings_store
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -26,10 +38,34 @@ router = APIRouter(prefix="/public", tags=["public"])
 PUBLIC_PLAYBOOK = "Public submission"
 
 
-async def _require_enabled(session: DbSession) -> None:
+def address_allowed(allowed: str, address: str | None) -> bool:
+    """True when the allow-list is empty or the address falls in one of its networks."""
+    tokens = allowed.replace(",", " ").split()
+    if not tokens:
+        return True
+    if address is None:
+        return False
+    try:
+        candidate = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    for token in tokens:
+        try:
+            network = ipaddress.ip_network(token, strict=False)
+        except ValueError:
+            continue
+        if candidate.version == network.version and candidate in network:
+            return True
+    return False
+
+
+async def _require_enabled(session: DbSession, request: Request) -> None:
     if not await settings_store.get(session, "public_submission"):
         # Reported as missing, so a disabled deployment does not advertise the route.
         raise NotFoundError("The public submission service is not enabled.")
+    allowed = str(await settings_store.get(session, "public_allowed_networks") or "")
+    if not address_allowed(allowed, client_ip(request)):
+        raise ForbiddenError("Public submission is not open to your address.")
 
 
 def _public_view(job: Job) -> PublicSubmissionOut:
@@ -53,6 +89,27 @@ def _public_view(job: Job) -> PublicSubmissionOut:
     )
 
 
+@router.get(
+    "/quota",
+    response_model=PublicQuotaOut,
+    summary="Submissions left for this caller in the current window",
+)
+async def quota(request: Request, session: DbSession) -> PublicQuotaOut:
+    """Reads the counter without spending it, so polling the page costs nothing."""
+    await _require_enabled(session, request)
+    remaining, reset = limiter.peek(
+        (PUBLIC_SUBMISSION_PATH, client_ip(request) or "unknown"),
+        PUBLIC_SUBMISSION_LIMIT,
+        PUBLIC_SUBMISSION_WINDOW,
+    )
+    return PublicQuotaOut(
+        limit=PUBLIC_SUBMISSION_LIMIT,
+        remaining=remaining,
+        window_seconds=PUBLIC_SUBMISSION_WINDOW,
+        reset_seconds=reset,
+    )
+
+
 @router.post(
     "/submissions",
     response_model=PublicSubmissionOut,
@@ -62,7 +119,7 @@ def _public_view(job: Job) -> PublicSubmissionOut:
 async def submit(
     payload: PublicSubmissionIn, request: Request, session: DbSession
 ) -> PublicSubmissionOut:
-    await _require_enabled(session)
+    await _require_enabled(session, request)
     job_request = await orchestrator.resolve_selection(
         session,
         raw_observable=payload.value,
@@ -110,9 +167,11 @@ async def submit(
     response_model=PublicSubmissionOut,
     summary="Read the result of a public submission",
 )
-async def read_submission(job_id: uuid.UUID, session: DbSession) -> PublicSubmissionOut:
+async def read_submission(
+    job_id: uuid.UUID, request: Request, session: DbSession
+) -> PublicSubmissionOut:
     """The identifier returned by the submission is the only key: it is a random UUID."""
-    await _require_enabled(session)
+    await _require_enabled(session, request)
     job = (
         await session.execute(
             select(Job)

@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import {
   Bot,
+  Braces,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -294,6 +295,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => navigate('/help')}
             icon={<CircleHelp className="h-[18px] w-[18px]" aria-hidden />}
           />
+          {/* A plain link: the API reference is served by the backend, not the app. */}
+          <a
+            href="/api/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open the API reference (Swagger)"
+            title="API reference (Swagger)"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors duration-fast ease-out hover:bg-surface-hover hover:text-content focus-visible:shadow-focus focus-visible:outline-none"
+          >
+            <Braces className="h-[18px] w-[18px]" aria-hidden />
+          </a>
 
           <Menu
             trigger={({ open, toggle }) => (

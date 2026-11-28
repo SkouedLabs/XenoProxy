@@ -293,6 +293,18 @@ To switch it off, turn the same switch off. Jobs already created stay in the his
 - The random job identifier is the only key to read a result back. Anyone who has the link
   can read it; nobody can list the others.
 - Each caller is limited to **10 submissions per hour per client address**.
+- Humans get a page at **`/public`**: no menu, one box to submit, the allowance left this
+  hour, a sign-in link at the top right, and only the result of the submission they just made
+  (remembered for the browser tab, never listed).
+- `GET /api/v1/public/quota` returns the caller's remaining allowance without spending it.
+
+### Restricting it to some addresses
+
+Under **Settings, Security**, **Public submission: allowed addresses** takes addresses and
+networks separated by commas or spaces, for example `192.0.2.0/24 203.0.113.7 2001:db8::/32`.
+Empty means everyone. Once set, any other address gets `403` on the page, the quota and the
+result routes. This relies on the client address, so set `BACKEND_TRUSTED_PROXY_COUNT`
+correctly (see below).
 
 ### Before you switch it on
 

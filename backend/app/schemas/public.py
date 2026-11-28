@@ -12,6 +12,15 @@ class PublicSubmissionIn(BaseModel):
     value: str = Field(min_length=1, max_length=2048, description="An IP, domain, URL or hash")
 
 
+class PublicQuotaOut(BaseModel):
+    """How many anonymous submissions this caller may still make in the current window."""
+
+    limit: int
+    remaining: int
+    window_seconds: int
+    reset_seconds: int
+
+
 class PublicSourceOut(BaseModel):
     name: str
     status: str

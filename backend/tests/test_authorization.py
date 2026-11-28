@@ -36,6 +36,7 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
         "/api/v1/public/submissions",
     ): "anonymous submission, off unless the instance enables it",
     ("GET", "/api/v1/public/submissions/{job_id}"): "reads one public result by its random id",
+    ("GET", "/api/v1/public/quota"): "shows an anonymous caller what is left of their allowance",
 }
 
 # Routes that only need an authenticated identity, with no further permission.

@@ -7,6 +7,7 @@ interface, so a headless deployment stays authoritative.
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -36,6 +37,8 @@ class SettingSpec:
     maximum: int | None = None
     # Environment variable that pins this setting when it is present.
     env_name: str | None = None
+    # A string with a stricter shape than free text, checked on save (e.g. "cidr_list").
+    format: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -187,6 +190,19 @@ SPECS: tuple[SettingSpec, ...] = (
         section="security",
     ),
     SettingSpec(
+        key="public_allowed_networks",
+        label="Public submission: allowed addresses",
+        help_text=(
+            "Empty: any address may use public submission. Otherwise only these addresses "
+            "and networks may, separated by commas or spaces, e.g. 192.0.2.0/24 203.0.113.7. "
+            "Applies to the public form, its quota and the result it shows."
+        ),
+        type="string",
+        default="",
+        section="security",
+        format="cidr_list",
+    ),
+    SettingSpec(
         key="send_files_to_providers",
         label="Allow a submitted file to be sent to a provider",
         help_text=(
@@ -331,6 +347,16 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
         return value
     if not isinstance(value, str) or len(value) > 512:
         raise ValidationFailedError(f"'{spec.key}' must be a string of at most 512 characters.")
+    if spec.format == "cidr_list":
+        tokens = value.replace(",", " ").split()
+        for token in tokens:
+            try:
+                ipaddress.ip_network(token, strict=False)
+            except ValueError as exc:
+                raise ValidationFailedError(
+                    f"'{spec.key}': '{token}' is not an IP address or a network."
+                ) from exc
+        return " ".join(tokens)
     return value
 
 
