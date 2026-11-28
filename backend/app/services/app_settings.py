@@ -24,6 +24,7 @@ it.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -100,6 +101,15 @@ def _unseal_field(name: str, field: str, stored: Any) -> str:
         return ""
 
 
+def _decode_secret(opened: str) -> Any:
+    """A structured secret was sealed as JSON; a damaged blob reads as empty."""
+    try:
+        return json.loads(opened)
+    except ValueError:
+        logger.error("section_secret_undecodable")
+        return {}
+
+
 async def _read(session: AsyncSession, name: str) -> BaseModel:
     model = model_for(name)
     row = (
@@ -108,8 +118,14 @@ async def _read(session: AsyncSession, name: str) -> BaseModel:
     data: dict[str, Any] = dict(row.value) if row and isinstance(row.value, dict) else {}
 
     for field in SECRET_FIELDS.get(name, ()):
+        if isinstance(data.get(field), dict) and "ciphertext" not in data[field]:
+            # Written before maps were sealed: kept as it is, and sealed on the
+            # next save of the section.
+            continue
         if data.get(field):
-            data[field] = _unseal_field(name, field, data[field])
+            structured = isinstance(data[field], dict) and data[field].get("encoding") == "json"
+            opened = _unseal_field(name, field, data[field])
+            data[field] = _decode_secret(opened) if structured and opened else opened
 
     try:
         return model.model_validate(data)
@@ -156,13 +172,36 @@ async def load_all(session: AsyncSession) -> dict[str, BaseModel]:
 
 
 def merge_secrets(name: str, incoming: dict[str, Any], current: BaseModel) -> dict[str, Any]:
-    """Empty or missing secrets keep the stored value; `<field>_clear` removes it."""
+    """Empty or missing secrets keep the stored value; `<field>_clear` removes it.
+
+    A map of secrets (headers, proxy passwords) is edited without its values
+    ever reaching the browser, so the form sends back only the keys. A key sent
+    with an empty value keeps what is stored, a key left out is removed, and a
+    field that is not sent at all is left as it is.
+    """
     data = {key: value for key, value in incoming.items() if not key.endswith("_set")}
     for field in SECRET_FIELDS.get(name, ()):
+        stored_value = getattr(current, field, "")
         if data.pop(f"{field}_clear", False):
-            data[field] = ""
+            data[field] = {} if isinstance(stored_value, dict) else ""
+        elif isinstance(stored_value, dict):
+            if data.get(field) is None:
+                data[field] = dict(stored_value)
+            else:
+                stored = dict(stored_value)
+                data[field] = {
+                    key: (value or stored.get(key, ""))
+                    for key, value in data[field].items()
+                    if value or key in stored
+                }
         elif not data.get(field):
-            data[field] = getattr(current, field, "")
+            data[field] = stored_value
+    if "proxy_passwords" in data and "proxy_profiles" in data:
+        # A password is kept only while its profile exists.
+        names = {profile.get("name") for profile in data["proxy_profiles"] or []}
+        data["proxy_passwords"] = {
+            key: value for key, value in (data["proxy_passwords"] or {}).items() if key in names
+        }
     return data
 
 
@@ -183,11 +222,13 @@ async def save(session: AsyncSession, name: str, value: BaseModel, actor: str) -
     for field in SECRET_FIELDS.get(name, ()):
         secret = stored.get(field)
         if secret:
-            sealed = seal(str(secret))
+            structured = not isinstance(secret, str)
+            sealed = seal(json.dumps(secret, sort_keys=True) if structured else str(secret))
             stored[field] = {
                 "ciphertext": sealed.ciphertext,
                 "wrapped_key": sealed.wrapped_key,
                 "key_version": sealed.key_version,
+                **({"encoding": "json"} if structured else {}),
             }
 
     row = (
@@ -209,6 +250,12 @@ def public(name: str, value: BaseModel) -> dict[str, Any]:
     """The section as the browser may see it: every secret replaced by a flag."""
     data = value.model_dump()
     for field in SECRET_FIELDS.get(name, ()):
+        if isinstance(data.get(field), dict):
+            # A map of secrets: only the keys are shown, so the browser learns
+            # which entries exist and never their values.
+            data[f"{field}_set"] = sorted(data[field])
+            data[field] = {}
+            continue
         data[f"{field}_set"] = bool(data.get(field))
         data[field] = ""
     return data
@@ -223,7 +270,10 @@ def audit_safe(name: str, value: BaseModel) -> dict[str, Any]:
     """
     out: dict[str, Any] = {}
     for field, content in value.model_dump().items():
-        if field in SECRET_FIELDS.get(name, ()):
+        if field in SECRET_FIELDS.get(name, ()) and isinstance(content, dict):
+            # Names stay readable, values never do.
+            out[field] = dict.fromkeys(content, "***")
+        elif field in SECRET_FIELDS.get(name, ()):
             out[field] = "***" if content else ""
         elif field == "headers" and isinstance(content, dict):
             out[field] = dict.fromkeys(content, "***")

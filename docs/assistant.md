@@ -90,3 +90,17 @@ judgement is evidence for the analyst, not the answer.
 The two [MCP servers](api.md#mcp-servers) let an agent outside XenoProxy do the same
 work. Both are off by default, both authenticate with an API token, and neither elevates
 beyond the permissions of the token's owner.
+
+## Live turns
+
+`POST /api/v1/assistant/conversations/{id}/stream` answers as server-sent events: `token`
+(text), `step` (a tool is about to run, with its arguments), `step_result` (its outcome) and
+`error`. The page shows the question at once, each tool call as it runs, and the answer
+rendered from a small Markdown subset (headings, lists, bold, code) that never produces a
+link, an image or HTML.
+
+## Headers towards the model
+
+Custom headers can be set in Admin, Settings, Assistant for an LLM proxy in front of the
+model. Their values are stored encrypted and are never returned or logged; headers
+XenoProxy sets itself (authorization, content type) cannot be overridden.

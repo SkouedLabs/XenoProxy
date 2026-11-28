@@ -1,6 +1,6 @@
 /** Assistant API: status, conversations, one turn. */
 
-import { api } from '@/lib/api-client';
+import { api, ApiError } from '@/lib/api-client';
 import type { AssistantStatus, ChatMessage, Conversation } from '@/lib/types';
 
 export const assistantApi = {
@@ -14,8 +14,27 @@ export const assistantApi = {
     api.post<ChatMessage & { error?: string }>(`/assistant/conversations/${id}/ask`, { message }),
 };
 
+export interface StartedStep {
+  index: number;
+  tool: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface FinishedStep {
+  index: number;
+  tool: string;
+  ok: boolean;
+  result: unknown;
+}
+
+export interface TurnHandlers {
+  onToken(text: string): void;
+  onStep(step: StartedStep): void;
+  onStepResult(step: FinishedStep): void;
+}
+
 /**
- * Stream one answer, calling `onToken` as it arrives.
+ * Send one question and follow the turn as it happens.
  *
  * `fetch` is used directly rather than the shared client: the client parses a
  * JSON body, and this response is an event stream read as it is produced. The
@@ -24,7 +43,7 @@ export const assistantApi = {
 export async function streamAnswer(
   conversationId: string,
   message: string,
-  onToken: (text: string) => void,
+  handlers: TurnHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`/api/v1/assistant/conversations/${conversationId}/stream`, {
@@ -35,12 +54,20 @@ export async function streamAnswer(
     signal,
   });
   if (!response.ok || !response.body) {
-    throw new Error(`The assistant answered HTTP ${response.status}.`);
+    throw new ApiError(response.status, null, `The assistant answered HTTP ${response.status}.`);
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let failure: string | null = null;
+
+  const dispatch = (event: string, payload: Record<string, unknown>) => {
+    if (event === 'token') handlers.onToken(String(payload.text ?? ''));
+    else if (event === 'step') handlers.onStep(payload as unknown as StartedStep);
+    else if (event === 'step_result') handlers.onStepResult(payload as unknown as FinishedStep);
+    else if (event === 'error') failure = String(payload.message ?? 'the assistant failed');
+  };
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -53,16 +80,14 @@ export async function streamAnswer(
     for (const block of blocks) {
       const event = /^event:\s*(.+)$/m.exec(block)?.[1]?.trim();
       const data = /^data:\s*(.+)$/m.exec(block)?.[1];
-      if (!data) continue;
-      if (event === 'token') {
-        try {
-          onToken(String(JSON.parse(data).text ?? ''));
-        } catch {
-          // A malformed frame is dropped rather than shown as content.
-        }
-      } else if (event === 'error') {
-        throw new Error(String(JSON.parse(data).message ?? 'the assistant failed'));
+      if (!event || !data) continue;
+      try {
+        dispatch(event, JSON.parse(data) as Record<string, unknown>);
+      } catch {
+        // A frame that is not JSON is dropped rather than shown as content.
       }
     }
   }
+
+  if (failure) throw new Error(failure);
 }

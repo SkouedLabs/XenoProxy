@@ -314,3 +314,42 @@ async def test_openrouter_model_listing_still_works() -> None:
             return_value=httpx.Response(200, json={"data": [{"id": "b/x"}, {"id": "a/y"}]})
         )
         assert await _openrouter().list_models() == ["a/y", "b/x"]
+
+
+@pytest.mark.asyncio
+async def test_agent_events_report_each_tool_before_and_after_it_runs(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.services.assistant import engine
+
+    calls = [
+        SimpleNamespace(call_id="c1", name="lookup", arguments={"value": "example.com"}),
+    ]
+    replies = [
+        SimpleNamespace(content="", tool_calls=calls),
+        SimpleNamespace(content="Looks clean.", tool_calls=[]),
+    ]
+
+    class Provider:
+        async def chat(self, messages, tools=None):
+            return replies.pop(0)
+
+    async def internal(_url):
+        return True
+
+    async def messages(*_args, **_kwargs):
+        return []
+
+    async def run(_context, name, arguments, allow_writes=False):
+        return {"name": name, "seen": arguments}
+
+    monkeypatch.setattr(engine, "build_provider", lambda _settings: Provider())
+    monkeypatch.setattr(engine.tlp, "endpoint_is_internal", internal)
+    monkeypatch.setattr(engine, "build_messages", messages)
+    monkeypatch.setattr(engine.tool_registry, "run", run)
+
+    settings = SimpleNamespace(base_url="http://llm.internal", allow_writes=False, max_steps=3)
+    seen = [
+        kind async for kind, _data in engine.agent_events(None, None, SimpleNamespace(), settings)
+    ]
+    assert seen == ["step", "step_result", "answer"]

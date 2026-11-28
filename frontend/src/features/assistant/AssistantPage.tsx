@@ -4,8 +4,8 @@
  *
  * Two things here are security decisions rather than presentation ones.
  *
- * The answer is rendered as **plain text**, never as HTML or Markdown that
- * could carry a link or an image. A model repeats what it was given, and what
+ * The answer is rendered by `RichText`, which builds React elements from a small
+ * Markdown subset and never emits HTML, a link or an image. A model repeats what it was given, and what
  * it was given includes provider reports that an attacker controls; an
  * auto-loaded remote image in an answer is a way to send the conversation
  * somewhere else, one pixel at a time.
@@ -49,6 +49,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatRelative } from '@/lib/format';
 import type { AgentStep, ChatMessage, TouchedObservable, Verdict } from '@/lib/types';
 import { assistantApi, streamAnswer } from './api';
+import { RichText } from './RichText';
 
 const VERDICTS = new Set(['clean', 'suspicious', 'malicious', 'unknown']);
 
@@ -71,6 +72,59 @@ function readRailOpen(): boolean {
   } catch {
     return false;
   }
+}
+
+interface LiveStep {
+  index: number;
+  tool: string;
+  arguments: Record<string, unknown>;
+  done: boolean;
+  ok?: boolean;
+  result?: unknown;
+}
+
+/** The exchange in progress: shown at once, before the server has stored anything. */
+interface Turn {
+  question: string;
+  text: string;
+  steps: LiveStep[];
+}
+
+function LiveSteps({ steps }: { steps: LiveStep[] }) {
+  if (steps.length === 0) return null;
+  return (
+    <ol className="mb-2 space-y-1.5">
+      {steps.map((step) => (
+        <li
+          key={step.index}
+          className="rounded-md border border-border-subtle bg-surface-sunken px-2.5 py-1.5 text-xs"
+        >
+          <span className="flex flex-wrap items-center gap-2">
+            {step.done ? (
+              <Wrench className="h-3 w-3 text-muted" aria-hidden />
+            ) : (
+              <Loader2 className="h-3 w-3 animate-spin text-primary" aria-hidden />
+            )}
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono">{step.tool}</code>
+            {step.done ? (
+              step.ok ? (
+                <Badge tone="success">ok</Badge>
+              ) : (
+                <Badge tone="danger">refused</Badge>
+              )
+            ) : (
+              <span className="text-faint">running…</span>
+            )}
+          </span>
+          {Object.keys(step.arguments).length > 0 ? (
+            <code className="mt-1 block truncate font-mono text-[11px] text-muted">
+              {JSON.stringify(step.arguments)}
+            </code>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function StepTrace({ steps }: { steps: AgentStep[] }) {
@@ -130,10 +184,13 @@ function Bubble({ message }: { message: ChatMessage }) {
               : 'border-border bg-surface-raised shadow-sm'
           }`}
         >
-          {/* Plain text on purpose: see the note at the top of this file. */}
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {message.content}
-          </p>
+          {mine ? (
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+              {message.content}
+            </p>
+          ) : (
+            <RichText text={message.content} />
+          )}
           <StepTrace steps={message.steps ?? []} />
         </div>
       </div>
@@ -204,7 +261,7 @@ export function AssistantPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [draft, setDraft] = useState('');
-  const [streamed, setStreamed] = useState('');
+  const [turn, setTurn] = useState<Turn | null>(null);
   const [railOpen, setRailOpen] = useState(readRailOpen);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -265,45 +322,47 @@ export function AssistantPage() {
 
   const askMutation = useMutation({
     mutationFn: async (message: string) => {
-      const agent = statusQuery.data?.agent_enabled;
-      if (agent) {
-        // Agent mode does not stream: its steps have to finish before there is
-        // an answer, and a half-answer a later step contradicts is worse.
-        const answer = await assistantApi.ask(conversationId, message);
-        if (answer.error) throw new Error(answer.error);
-        return;
+      setTurn({ question: message, text: '', steps: [] });
+      const update = (change: (current: Turn) => Turn) =>
+        setTurn((current) => (current ? change(current) : current));
+      await streamAnswer(conversationId, message, {
+        onToken: (text) => update((current) => ({ ...current, text: current.text + text })),
+        onStep: (step) =>
+          update((current) => ({
+            ...current,
+            steps: [...current.steps, { ...step, done: false }],
+          })),
+        onStepResult: (step) =>
+          update((current) => ({
+            ...current,
+            steps: current.steps.map((entry) =>
+              entry.index === step.index
+                ? { ...entry, done: true, ok: step.ok, result: step.result }
+                : entry,
+            ),
+          })),
+      });
+    },
+    onSettled: async (_data, error) => {
+      // The stored thread replaces the live turn only once it has been reloaded,
+      // so the question and answer never blink out between the two.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['assistant', 'conversation', conversationId] }),
+        queryClient.invalidateQueries({ queryKey: ['assistant', 'conversations'] }),
+      ]);
+      setTurn(null);
+      if (error) {
+        toast.error(
+          'The assistant could not answer',
+          error instanceof Error ? error.message : 'Unexpected failure.',
+        );
       }
-      setStreamed('');
-      await streamAnswer(conversationId, message, (token) =>
-        setStreamed((previous) => previous + token),
-      );
-    },
-    onSuccess: () => {
-      setStreamed('');
-      void queryClient.invalidateQueries({
-        queryKey: ['assistant', 'conversation', conversationId],
-      });
-      void queryClient.invalidateQueries({ queryKey: ['assistant', 'conversations'] });
-    },
-    onError: (error) => {
-      setStreamed('');
-      // The question is stored even when the answer failed, so the thread is
-      // reloaded here too: otherwise what the analyst typed would only appear
-      // after a manual refresh, which reads as the message having been lost.
-      void queryClient.invalidateQueries({
-        queryKey: ['assistant', 'conversation', conversationId],
-      });
-      void queryClient.invalidateQueries({ queryKey: ['assistant', 'conversations'] });
-      toast.error(
-        'The assistant could not answer',
-        error instanceof Error ? error.message : 'Unexpected failure.',
-      );
     },
   });
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [threadQuery.data?.messages?.length, streamed]);
+  }, [threadQuery.data?.messages?.length, turn?.text, turn?.steps.length]);
 
   useEffect(() => {
     try {
@@ -550,7 +609,7 @@ export function AssistantPage() {
           ) : (
             <>
               <ul className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                {messages.length === 0 && !streamed ? (
+                {messages.length === 0 && !turn ? (
                   <li className="pt-8 text-center text-sm text-faint">
                     Ask about a job, an observable, or what this instance can run.
                   </li>
@@ -558,29 +617,40 @@ export function AssistantPage() {
                 {messages.map((message) => (
                   <Bubble key={message.id} message={message} />
                 ))}
-                {streamed ? (
-                  <li className="flex items-start gap-2.5">
-                    <Speaker mine={false} />
-                    <div className="max-w-[82%] rounded-lg border border-border bg-surface-raised px-3.5 py-2.5 shadow-sm">
-                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {streamed}
-                      </p>
-                    </div>
-                  </li>
-                ) : null}
-                {askMutation.isPending && !streamed ? (
-                  <li className="flex items-center gap-2.5">
-                    <Speaker mine={false} />
-                    <span className="flex gap-1" aria-label="The assistant is thinking">
-                      {[0, 150, 300].map((delay) => (
-                        <span
-                          key={delay}
-                          className="h-1.5 w-1.5 animate-bounce rounded-pill bg-muted"
-                          style={{ animationDelay: `${delay}ms` }}
-                        />
-                      ))}
-                    </span>
-                  </li>
+                {turn ? (
+                  <>
+                    <li className="flex flex-row-reverse items-start gap-2.5">
+                      <Speaker mine />
+                      <div className="min-w-0 max-w-[82%] text-right">
+                        <div className="inline-block rounded-lg border border-primary-border bg-primary-soft px-3.5 py-2.5 text-left">
+                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                            {turn.question}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Speaker mine={false} />
+                      <div className="min-w-0 max-w-[82%]">
+                        <LiveSteps steps={turn.steps} />
+                        {turn.text ? (
+                          <div className="rounded-lg border border-border bg-surface-raised px-3.5 py-2.5 shadow-sm">
+                            <RichText text={turn.text} />
+                          </div>
+                        ) : (
+                          <span className="flex gap-1 py-2" aria-label="The assistant is thinking">
+                            {[0, 150, 300].map((delay) => (
+                              <span
+                                key={delay}
+                                className="h-1.5 w-1.5 animate-bounce rounded-pill bg-muted"
+                                style={{ animationDelay: `${delay}ms` }}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  </>
                 ) : null}
                 <div ref={bottom} />
               </ul>

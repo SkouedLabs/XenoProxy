@@ -38,6 +38,8 @@ services:
         BACKEND_UID = 10001
         POSTGRES_UID = 999
         REDIS_UID = 999
+        # The screenshot image runs its browser as this account.
+        CAPTURE_UID = 1000
         target = pathlib.Path('/run/secrets')
         target.mkdir(parents=True, exist_ok=True)
         os.chmod(target, 0o755)
@@ -47,6 +49,7 @@ services:
             'secret_key': (lambda: secrets.token_urlsafe(48), BACKEND_UID),
             'master_key': (lambda: base64.b64encode(secrets.token_bytes(32)).decode(), BACKEND_UID),
             'redis_password': (lambda: secrets.token_urlsafe(32), BACKEND_UID),
+            'capture_token': (lambda: secrets.token_urlsafe(32), BACKEND_UID),
         }
         values = {}
         for name, (generate, owner) in plan.items():
@@ -62,6 +65,11 @@ services:
         pg_copy.write_text(values['db_password'])
         os.chmod(pg_copy, stat.S_IRUSR | stat.S_IWUSR)
         os.chown(pg_copy, POSTGRES_UID, POSTGRES_UID)
+        # The screenshot service reads the shared token as its own uid.
+        capture_copy = target / 'capture_token.screenshot'
+        capture_copy.write_text(values['capture_token'])
+        os.chmod(capture_copy, stat.S_IRUSR | stat.S_IWUSR)
+        os.chown(capture_copy, CAPTURE_UID, CAPTURE_UID)
         # The queue reads its password from a config file rather than from a
         # command line argument, so it never appears in the process table.
         redis_conf = target / 'redis.conf'
@@ -253,6 +261,8 @@ services:
       BACKEND_PLUGINS_DIR: /app/plugins
       BACKEND_UPLOADS_DIR: /app/uploads
       BACKEND_YARA_RULES_DIR: /app/yara_rules
+      # Screenshots: the API only queues them; the worker calls the screenshot service.
+      BACKEND_CAPTURE_ENABLED: ${XENOPROXY_CAPTURES:-false}
     volumes:
       - secrets:/run/secrets:ro
       # Analyzer plugins. Drop a folder in here, or upload a zip from Admin,
@@ -302,6 +312,9 @@ services:
       BACKEND_PLUGINS_DIR: /app/plugins
       BACKEND_UPLOADS_DIR: /app/uploads
       BACKEND_YARA_RULES_DIR: /app/yara_rules
+      BACKEND_CAPTURE_ENABLED: ${XENOPROXY_CAPTURES:-false}
+      BACKEND_CAPTURE_SERVICE_URL: http://screenshot:8080
+      BACKEND_CAPTURE_TOKEN_FILE: /run/secrets/capture_token
       # Set these to reach the internet through a corporate proxy, and mount the
       # internal certificate authority instead of disabling verification.
       # BACKEND_OUTBOUND_PROXY_URL: http://proxy.internal:3128
@@ -319,13 +332,42 @@ services:
       - crypto_intel:/app/crypto_intel:ro
     tmpfs:
       - /tmp:size=64m,mode=1777
-    networks: [data, outbound]
+    networks: [data, outbound, capture]
     healthcheck:
       test: ["CMD", "python", "-c", "import socket,os; socket.create_connection((os.environ['BACKEND_REDIS_HOST'], 6379), 4)"]
       interval: 20s
       timeout: 5s
       retries: 4
       start_period: 30s
+    mem_limit: 1g
+    pids_limit: 256
+    <<: *hardening
+
+  screenshot:
+    # Alpha. Headless Chromium for the worker's screenshots, in its own image so
+    # that the backend keeps its process-creation guard. It has no database, no
+    # backend code and no secret but its token, and it reaches the internet only
+    # through `outbound`; every page request it makes is checked against private
+    # ranges before it leaves.
+    build:
+      context: ./screenshot
+      dockerfile: Dockerfile
+    image: skouedlabs/xenoproxy-screenshot:latest
+    container_name: xenoproxy-screenshot
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
+    environment:
+      CAPTURE_TOKEN_FILE: /run/secrets/capture_token.screenshot
+      CAPTURE_CONCURRENCY: "2"
+      CAPTURE_ALLOW_PLAIN_HTTP: "false"
+    volumes:
+      - secrets:/run/secrets:ro
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    # Chromium uses shared memory for its tabs; the default 64 MB is too small.
+    shm_size: 256m
+    networks: [capture, outbound]
     mem_limit: 1g
     pids_limit: 256
     <<: *hardening
@@ -386,6 +428,10 @@ networks:
   # Egress for the analyzers' outbound calls to the OSINT providers.
   outbound:
     driver: bridge
+  # Worker to screenshot service only. No route off the host.
+  capture:
+    driver: bridge
+    internal: true
 
 volumes:
   database:

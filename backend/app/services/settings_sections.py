@@ -10,16 +10,47 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 PEM_HEADER = "-----BEGIN CERTIFICATE-----"
 # Each part can match in exactly one way: with the dot excluded from the
 # character classes the engine has nothing to backtrack over, so a crafted
 # address cannot make this quadratic.
 EMAIL_RE = re.compile(r"^[^@\s<>,;]{1,64}@[^@\s<>,;.]{1,63}(\.[^@\s<>,;.]{1,63}){1,8}$")
+# httpx speaks HTTP, HTTPS and SOCKS5 (with or without authentication). SOCKS4
+# and SOCKS4A are not supported by the client library, so they are refused
+# here instead of failing later, inside an analyzer run.
 _PROXY_URL = re.compile(r"^(https?|socks5h?)://[^\s]+$")
+MAX_PROXY_PROFILES = 32
 _SERVER_URL = re.compile(r"^https?://[^\s/]+(/[^\s]*)?$")
 LDAP_URL_PATTERN = r"^ldaps?://[^\s/]+(:\d{1,5})?/?$"
+
+
+class ProxyProfile(BaseModel):
+    """One named proxy an analysis can be sent through.
+
+    `red_approved` is the only thing that lets a TLP:RED job leave through it.
+    Its password is not in this model: it is sealed apart, keyed by name, so a
+    profile can be listed and edited without the secret ever being read back.
+    """
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    url: str = Field(min_length=1, max_length=1024)
+    username: str = Field("", max_length=256)
+    red_approved: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, value: str) -> str:
+        value = value.strip()
+        if not _PROXY_URL.match(value):
+            raise ValueError(
+                "a proxy URL is expected: http://, https://, socks5:// or socks5h://, "
+                "for example socks5h://tor.internal:9050 (SOCKS4 and SOCKS4A are not supported)"
+            )
+        if "@" in value.split("://", 1)[1]:
+            raise ValueError("put the credentials in their own fields, not in the URL")
+        return value
 
 
 class NetworkSettings(BaseModel):
@@ -40,6 +71,17 @@ class NetworkSettings(BaseModel):
     no_proxy: str = Field("localhost,127.0.0.1", max_length=2048)
     proxy_username: str = Field("", max_length=256)
     proxy_password: str = Field("", max_length=1024)
+    # Named proxies an analysis can be sent through, chosen per analyzer. Each
+    # carries a kind of its own (HTTP, SOCKS4A, SOCKS5...), so one instance can
+    # reach a Tor relay, a corporate egress and a plain HTTP gateway at once.
+    proxy_profiles: list[ProxyProfile] = Field(default_factory=list, max_length=MAX_PROXY_PROFILES)
+    # Passwords of the profiles above, sealed as one value, keyed by profile name.
+    proxy_passwords: dict[str, str] = Field(default_factory=dict)
+    # Profile used by an analyzer with no entry of its own, and by anything that
+    # is not an analyzer. Empty means the proxy configured above, or none.
+    proxy_default: str = Field("", max_length=64)
+    # Analyzer name to profile name. An analyzer with no entry uses the default.
+    proxy_assignments: dict[str, str] = Field(default_factory=dict)
     # Additional authorities in PEM form, for an internal root CA or a company
     # TLS-inspecting proxy. Appended to the system store, never replacing it.
     ca_bundle: str = Field("", max_length=1_048_576)
@@ -51,6 +93,19 @@ class NetworkSettings(BaseModel):
         if value and not _PROXY_URL.match(value):
             raise ValueError("a proxy URL is expected, for example http://proxy.internal:3128")
         return value
+
+    @model_validator(mode="after")
+    def _proxy_references(self) -> NetworkSettings:
+        names = {profile.name for profile in self.proxy_profiles}
+        if len(names) != len(self.proxy_profiles):
+            raise ValueError("two proxy profiles share a name")
+        dangling = {self.proxy_default, *self.proxy_assignments.values()} - names - {""}
+        if dangling:
+            raise ValueError(f"unknown proxy profile: {', '.join(sorted(dangling))}")
+        stray = set(self.proxy_passwords) - names
+        if stray:
+            raise ValueError("a password is kept for a profile that does not exist")
+        return self
 
     @field_validator("ca_bundle")
     @classmethod
@@ -358,8 +413,8 @@ SECTIONS: dict[str, type[BaseModel]] = {
 # *Names* of the sealed fields of each section, never their values, so this
 # mapping is safe to log.
 SECRET_FIELDS: dict[str, tuple[str, ...]] = {
-    "network": ("proxy_password",),
-    "assistant": ("api_key",),
+    "network": ("proxy_password", "proxy_passwords"),
+    "assistant": ("api_key", "headers"),
     "oidc": ("client_secret",),
     "ldap": ("bind_password",),
     "smtp": ("password",),

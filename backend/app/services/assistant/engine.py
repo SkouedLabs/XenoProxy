@@ -226,28 +226,28 @@ async def build_messages(
 # --------------------------------------------------------------------------
 
 
-async def run_turn(
+async def agent_events(
     session: AsyncSession,
     user: User,
     conversation: Conversation,
     settings: Any,
     queue: Any | None = None,
-) -> TurnResult:
-    """Answer once, running tools in between when agent mode is on.
+) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+    """Run the agent loop and yield what it does, as it does it.
 
-    `queue` is what lets a tool schedule the work it submits. Without it a
-    submitted job is written and never runs.
+    Events, in order:
+    - `("step", {index, step, tool, arguments})` before a tool runs;
+    - `("step_result", {index, step, tool, ok, result})` once it has answered;
+    - `("answer", {content, steps})` last, with the whole trace.
+
+    The interface shows the first two live, so an analyst sees which tool is
+    running and with what before the answer exists.
     """
     provider = build_provider(settings)
     withhold_red = not await tlp.endpoint_is_internal(str(settings.base_url))
     messages = await build_messages(
         session, user, conversation, settings, withhold_red=withhold_red
     )
-
-    if not settings.agent_enabled:
-        completion = await provider.chat(messages)
-        return TurnResult(content=completion.content)
-
     context = tool_registry.ToolContext(
         session=session, user=user, queue=queue, withhold_red=withhold_red
     )
@@ -258,7 +258,8 @@ async def run_turn(
     for step in range(int(settings.max_steps)):
         completion = await provider.chat(messages, tools=schemas)
         if not completion.tool_calls:
-            return TurnResult(content=completion.content, steps=steps)
+            yield "answer", {"content": completion.content, "steps": steps}
+            return
 
         # The identifier is settled once and used on both sides of the
         # exchange. The protocol pairs a result with the call it answers, and a
@@ -293,6 +294,16 @@ async def run_turn(
         )
 
         for index, call in enumerate(completion.tool_calls):
+            position = len(steps)
+            yield (
+                "step",
+                {
+                    "index": position,
+                    "step": step + 1,
+                    "tool": call.name,
+                    "arguments": call.arguments or {},
+                },
+            )
             try:
                 result: Any = await tool_registry.run(
                     context, call.name, call.arguments, allow_writes=bool(settings.allow_writes)
@@ -304,15 +315,15 @@ async def run_turn(
                 logger.warning("assistant_tool_failed", tool=call.name, error=str(exc))
                 result, ok = {"error": f"{type(exc).__name__}"}, False
 
-            steps.append(
-                {
-                    "step": step + 1,
-                    "tool": call.name,
-                    "arguments": call.arguments,
-                    "ok": ok,
-                    "result": result,
-                }
-            )
+            entry = {
+                "step": step + 1,
+                "tool": call.name,
+                "arguments": call.arguments,
+                "ok": ok,
+                "result": result,
+            }
+            steps.append(entry)
+            yield "step_result", {"index": position, **entry}
             messages.append(
                 {
                     "role": "tool",
@@ -323,14 +334,44 @@ async def run_turn(
             )
 
     # The budget ran out with the model still asking for tools.
-    return TurnResult(
-        content=(
-            "I stopped after "
-            f"{settings.max_steps} steps without reaching an answer. "
-            "Ask me something narrower, or an administrator can raise the step limit."
-        ),
-        steps=steps,
+    yield (
+        "answer",
+        {
+            "content": (
+                "I stopped after "
+                f"{settings.max_steps} steps without reaching an answer. "
+                "Ask me something narrower, or an administrator can raise the step limit."
+            ),
+            "steps": steps,
+        },
     )
+
+
+async def run_turn(
+    session: AsyncSession,
+    user: User,
+    conversation: Conversation,
+    settings: Any,
+    queue: Any | None = None,
+) -> TurnResult:
+    """Answer once, running tools in between when agent mode is on.
+
+    `queue` is what lets a tool schedule the work it submits. Without it a
+    submitted job is written and never runs.
+    """
+    if settings.agent_enabled:
+        async for kind, data in agent_events(session, user, conversation, settings, queue):
+            if kind == "answer":
+                return TurnResult(content=data["content"], steps=data["steps"])
+        raise ProviderError("The agent ended without an answer.")
+
+    provider = build_provider(settings)
+    withhold_red = not await tlp.endpoint_is_internal(str(settings.base_url))
+    messages = await build_messages(
+        session, user, conversation, settings, withhold_red=withhold_red
+    )
+    completion = await provider.chat(messages)
+    return TurnResult(content=completion.content)
 
 
 async def stream_turn(
@@ -341,9 +382,8 @@ async def stream_turn(
 ) -> AsyncIterator[str]:
     """Stream a plain answer token by token.
 
-    Agent mode does not stream: its tool steps have to finish before there is
-    an answer to stream, and emitting a half-answer that a later step
-    contradicts is worse than waiting.
+    Agent mode is streamed through `agent_events` instead: its steps are sent as
+    they happen, and the answer text arrives once it exists.
     """
     provider = build_provider(settings)
     withhold_red = not await tlp.endpoint_is_internal(str(settings.base_url))

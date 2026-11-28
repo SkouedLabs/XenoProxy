@@ -23,7 +23,7 @@ from app.core.db import dispose_engine, get_session_factory
 from app.core.logging import configure_logging, get_logger
 from app.core.sandbox import install_exec_guard
 from app.plugins import load_all
-from app.services import app_settings, orchestrator, yara_rules
+from app.services import app_settings, captures, orchestrator, yara_rules
 
 logger = get_logger(__name__)
 
@@ -46,6 +46,12 @@ async def run_job(context: dict[str, Any], job_id: str) -> None:
         store=queue,
         enqueue=enqueue,
     )
+
+
+async def capture_url(_context: dict[str, Any], capture_id: str) -> None:
+    """Take one browser screenshot through the screenshot service."""
+    await _refresh_outbound_route()
+    await captures.run(get_session_factory(), uuid.UUID(capture_id))
 
 
 async def pull_yara_ruleset(_context: dict[str, Any], source_id: str) -> None:
@@ -107,7 +113,7 @@ def _redis_settings() -> RedisSettings:
 class WorkerSettings:
     """arq worker definition, referenced as `app.worker.WorkerSettings`."""
 
-    functions: ClassVar[list[Callable[..., Any]]] = [run_job, pull_yara_ruleset]
+    functions: ClassVar[list[Callable[..., Any]]] = [run_job, pull_yara_ruleset, capture_url]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 20

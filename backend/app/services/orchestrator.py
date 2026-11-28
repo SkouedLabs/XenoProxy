@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from app.core import http_client
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationFailedError
 from app.core.logging import get_logger
@@ -683,7 +684,8 @@ async def _run_analyzer(
     report.status = ReportStatus.RUNNING
     await session.commit()
 
-    result = await built.plugin.execute(plan.observable)
+    with http_client.analyzer_scope(plugin_name, plan.tlp):
+        result = await built.plugin.execute(plan.observable)
     await _store_result(session, report_id, result)
 
 
@@ -785,7 +787,8 @@ async def _run_connector_phase(
                     return
 
                 await _mark(session, report_id, ReportStatus.RUNNING, None)
-                result = await connector.execute(context)
+                with http_client.analyzer_scope(plugin_name, plan.tlp):
+                    result = await connector.execute(context)
                 await _store_result(session, report_id, result)
             except Exception as exc:
                 logger.error("connector_crashed", plugin=plugin_name, error=str(exc))
@@ -857,7 +860,8 @@ async def _run_pivot_phase(
                     continue
 
                 await _mark(session, report_id, ReportStatus.RUNNING, None)
-                result = await pivot.execute(context)
+                with http_client.analyzer_scope(plugin_name, plan.tlp):
+                    result = await pivot.execute(context)
             except Exception as exc:
                 logger.error("pivot_crashed", plugin=plugin_name, error=str(exc))
                 await session.rollback()

@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     outbound_proxy_url: str | None = None
     custom_ca_file: str | None = None
 
+    # Browser screenshots. Off unless the deployment runs the screenshot service;
+    # the token is the shared secret between the worker and that service.
+    capture_enabled: bool = False
+    capture_service_url: str = "http://screenshot:8080"
+    capture_token: str = ""
+    capture_token_file: str | None = None
+
     cors_origins: str = ""
     max_body_bytes: int = 2097152
     max_upload_bytes: int = 33554432
@@ -131,6 +138,7 @@ class Settings(BaseSettings):
             ("bootstrap_admin_password", "bootstrap_admin_password_file"),
             ("redis_password", "redis_password_file"),
             ("oidc_client_secret", "oidc_client_secret_file"),
+            ("capture_token", "capture_token_file"),
         )
         for field, file_field in pairs:
             if not getattr(self, field):

@@ -18,6 +18,9 @@ from __future__ import annotations
 import ipaddress
 import socket
 import ssl
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -132,6 +135,74 @@ class OutboundRoute:
 _route: OutboundRoute | None = None
 
 
+@dataclass(frozen=True)
+class _Profile:
+    """A named proxy, with its credentials already in its URL."""
+
+    name: str
+    proxy: str
+    red_approved: bool
+
+
+_profiles: dict[str, _Profile] = {}
+_assignments: dict[str, str] = {}
+_default_profile = ""
+
+# (analyzer name, TLP of the job) for the work running in this task. A request
+# made outside an analyzer carries no scope and uses the default profile.
+_scope: ContextVar[tuple[str, str] | None] = ContextVar("outbound_scope", default=None)
+
+
+@contextmanager
+def analyzer_scope(analyzer: str, tlp: Any) -> Iterator[None]:
+    """Route every request made in this block according to the analyzer's proxy.
+
+    The orchestrator wraps each plugin run in it. The scope lives in a context
+    variable, so concurrent analyzers of one job each keep their own route.
+    """
+    token = _scope.set((analyzer, str(getattr(tlp, "value", tlp)).lower()))
+    try:
+        yield
+    finally:
+        _scope.reset(token)
+
+
+def _chosen_profile() -> _Profile | None:
+    scope = _scope.get()
+    analyzer, tlp = scope if scope else ("", "")
+    name = _assignments.get(analyzer, "") or _default_profile
+    if not name:
+        return None
+    profile = _profiles.get(name)
+    if profile is None:
+        raise OutboundRequestError(f"the proxy profile '{name}' is not defined")
+    if tlp == "red" and not profile.red_approved:
+        # A RED job never leaves through a proxy that was not approved for it,
+        # and it does not fall back to a direct connection either.
+        raise OutboundRequestError(
+            f"the proxy profile '{name}' is not approved for TLP:RED material"
+        )
+    return profile
+
+
+def capture_proxy(tlp: Any) -> str | None:
+    """The proxy a browser capture leaves through, or None for the direct route.
+
+    A capture is an analyzer of its own, named "screenshot", so the proxy profile
+    assigned to it applies. TLP:RED has no direct fallback: it needs a profile
+    approved for RED, or the capture is refused.
+    """
+    with analyzer_scope("screenshot", tlp):
+        profile = _chosen_profile()
+    if profile is not None:
+        return profile.proxy
+    if str(getattr(tlp, "value", tlp)).lower() == "red":
+        raise OutboundRequestError(
+            "TLP:RED screenshots need a proxy profile approved for RED material"
+        )
+    return current_route().proxy
+
+
 def _ssl_context(ca_bundle: str) -> ssl.SSLContext:
     """Trust extra authorities on top of the system store.
 
@@ -187,7 +258,26 @@ def set_network(section: Any | None) -> None:
         no_proxy=getattr(section, "no_proxy", "") or "",
         verify=verify,
     )
+    _install_profiles(section)
     logger.info("outbound_route_set", route=_route.describe())
+
+
+def _install_profiles(section: Any | None) -> None:
+    """Build the named proxies, with their credentials, from the Network section."""
+    global _default_profile
+    passwords: dict[str, str] = getattr(section, "proxy_passwords", None) or {}
+    profiles: dict[str, _Profile] = {}
+    for item in getattr(section, "proxy_profiles", None) or []:
+        profiles[item.name] = _Profile(
+            name=item.name,
+            proxy=_proxy_with_credentials(item.url, item.username, passwords.get(item.name, "")),
+            red_approved=item.red_approved,
+        )
+    _profiles.clear()
+    _profiles.update(profiles)
+    _assignments.clear()
+    _assignments.update(getattr(section, "proxy_assignments", None) or {})
+    _default_profile = getattr(section, "proxy_default", "") or ""
 
 
 def build_route(section: Any) -> OutboundRoute:
@@ -249,6 +339,11 @@ def _client_kwargs(
     timeout: float, *, url: str = "", route: OutboundRoute | None = None
 ) -> dict[str, Any]:
     effective = route or current_route()
+    proxy = effective.proxy
+    if route is None:
+        chosen = _chosen_profile()
+        if chosen is not None:
+            proxy = chosen.proxy
     kwargs: dict[str, Any] = {
         "timeout": httpx.Timeout(timeout, connect=min(10.0, timeout)),
         "follow_redirects": False,
@@ -257,8 +352,8 @@ def _client_kwargs(
         "trust_env": False,
         "verify": effective.verify,
     }
-    if effective.proxy and not (url and _bypasses_proxy(url, effective.no_proxy)):
-        kwargs["proxy"] = effective.proxy
+    if proxy and not (url and _bypasses_proxy(url, effective.no_proxy)):
+        kwargs["proxy"] = proxy
     return kwargs
 
 

@@ -361,3 +361,32 @@ analyst help for what it looks for and what it cannot tell.
 
 Uploads are limited to 32 MiB (`BACKEND_MAX_UPLOAD_BYTES`). Archives are read in memory, one
 level deep, with caps on the number and size of their members.
+
+## Outbound proxies
+
+**Settings › Network** holds a set of proxy profiles: HTTP, HTTPS, SOCKS5 (with or without
+user name and password) and SOCKS5h. SOCKS4 and SOCKS4A are refused, because the HTTP client
+does not speak them. Passwords are stored encrypted and never shown again.
+
+A profile is chosen per analysis: each analyzer can be assigned a profile, and a default
+profile applies to the rest. This is how traffic that must not leave from the server's own
+address is sent through your machine or a VPN exit. A profile marked **approved for RED**
+is the only kind that TLP:RED material may use; with no such profile, a RED analysis that
+needs the network is refused instead of leaving the deployment.
+
+## Screenshots (alpha)
+
+A page can be captured as a PNG, from the API (`POST /api/v1/captures`, then
+`GET /api/v1/captures/{id}/image`). The browser runs in its own container, `screenshot`,
+because the backend and the worker are not allowed to start processes.
+
+To turn it on, set `XENOPROXY_CAPTURES=true` and start the stack with `--build`. The service
+sits on an internal network reachable only by the worker, authenticates it with a generated
+token, and refuses private, loopback, link-local and metadata addresses, including those a
+page redirects to. Chromium runs without its own sandbox; the container (read-only, no
+capabilities, memory and process limits) is the isolation.
+
+The proxy is the one assigned to `screenshot` in the proxy profiles. TLP:RED captures are
+refused unless that profile is approved for RED. Images are kept in the database with no
+expiry yet; delete old rows if space matters. SOCKS5 with authentication is supported;
+SOCKS4 is not.

@@ -222,10 +222,11 @@ async def ask_streamed(
     session: DbSession,
     user: AssistantUser,
 ) -> StreamingResponse:
-    """The same turn, delivered as it is generated.
+    """The same turn, delivered as it happens.
 
-    Agent mode is not streamed: its steps have to run before there is an answer
-    worth showing. The interface falls back to `ask` when the agent is on.
+    Events: `step` and `step_result` in agent mode (a tool starting, then its
+    outcome), `token` for answer text, `error`, and `done` last. The answer and
+    its steps are stored once the turn ends, in a session of their own.
     """
     settings = await profiles.effective_settings(session)
     engine.ensure_allowed(settings, user)
@@ -240,13 +241,26 @@ async def ask_streamed(
     await session.commit()
 
     factory = request.app.state.session_factory
+    queue = request.app.state.queue
 
     async def stream() -> Any:
         pieces: list[str] = []
+        steps: list[dict[str, Any]] = []
         try:
-            async for piece in engine.stream_turn(session, user, conversation, settings):
-                pieces.append(piece)
-                yield f"event: token\ndata: {json.dumps({'text': piece})}\n\n"
+            if settings.agent_enabled:
+                async for kind, data in engine.agent_events(
+                    session, user, conversation, settings, queue
+                ):
+                    if kind == "answer":
+                        steps = data["steps"]
+                        pieces.append(data["content"])
+                        yield f"event: token\ndata: {json.dumps({'text': data['content']})}\n\n"
+                    else:
+                        yield f"event: {kind}\ndata: {json.dumps(data, default=str)}\n\n"
+            else:
+                async for piece in engine.stream_turn(session, user, conversation, settings):
+                    pieces.append(piece)
+                    yield f"event: token\ndata: {json.dumps({'text': piece})}\n\n"
         except Exception as exc:
             yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
 
@@ -257,7 +271,23 @@ async def ask_streamed(
             async with factory() as writer:
                 stored = await writer.get(type(conversation), conversation.id)
                 if stored is not None:
-                    await engine.record(writer, stored, role=MessageRole.ASSISTANT, content=answer)
+                    await engine.record(
+                        writer,
+                        stored,
+                        role=MessageRole.ASSISTANT,
+                        content=answer,
+                        steps=steps,
+                    )
+                    if steps:
+                        await audit.record(
+                            writer,
+                            action="assistant.tools",
+                            actor=user.username,
+                            actor_id=user.id,
+                            target=str(conversation.id),
+                            ip_address=client_ip(request),
+                            details={"tools": [step["tool"] for step in steps]},
+                        )
                     await writer.commit()
         yield f"event: done\ndata: {json.dumps({'length': len(answer)})}\n\n"
 

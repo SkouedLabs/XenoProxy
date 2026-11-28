@@ -1,6 +1,7 @@
 """ORM models for XenoProxy."""
 
 from app.models.audit import AuditEvent
+from app.models.capture import Capture
 from app.models.conversation import Conversation, Message
 from app.models.group import Group, user_groups
 from app.models.job import Job, PluginReport
@@ -18,6 +19,7 @@ from app.models.user import ApiKey, MfaRecoveryCode, Session, User
 __all__ = [
     "ApiKey",
     "AuditEvent",
+    "Capture",
     "Conversation",
     "Group",
     "InstanceSetting",
