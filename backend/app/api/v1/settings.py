@@ -315,6 +315,9 @@ async def create_profile(
         details={"provider": profile.provider, "model": profile.model},
     )
     await session.commit()
+    # `updated_at` is rewritten by the database on update, which leaves it expired;
+    # reading it from a loop with no open connection would fail, so reload it here.
+    await session.refresh(profile)
     return _profile_out(profile)
 
 
@@ -344,6 +347,9 @@ async def update_profile(
         details={"provider": profile.provider, "model": profile.model},
     )
     await session.commit()
+    # `updated_at` is rewritten by the database on update, which leaves it expired;
+    # reading it from a loop with no open connection would fail, so reload it here.
+    await session.refresh(profile)
     return _profile_out(profile)
 
 
@@ -361,6 +367,9 @@ async def activate_profile(
         ip_address=client_ip(request),
     )
     await session.commit()
+    # `updated_at` is rewritten by the database on update, which leaves it expired;
+    # reading it from a loop with no open connection would fail, so reload it here.
+    await session.refresh(profile)
     return _profile_out(profile)
 
 
