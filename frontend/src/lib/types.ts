@@ -120,7 +120,7 @@ export interface PluginReportDetail extends PluginReport {
   raw_output: Record<string, unknown> | null;
 }
 
-export type JobOrigin = 'ui' | 'api' | 'assistant' | 'mcp' | 'pivot';
+export type JobOrigin = 'ui' | 'api' | 'assistant' | 'mcp' | 'pivot' | 'public';
 
 export interface JobSummary {
   id: string;

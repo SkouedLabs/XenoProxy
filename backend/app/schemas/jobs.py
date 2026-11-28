@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.job import (
     JobOrigin,
@@ -137,6 +137,29 @@ class JobResultOut(JobSummaryOut):
     reports: list[PluginReportOut]
 
 
+class SampleOut(BaseModel):
+    """What was recorded about a submitted file. The stored path is never part of it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    sha256: str
+    sha1: str
+    md5: str
+    size: int
+    kind: str
+    mime: str
+    entropy: float
+    magic_hex: str
+    extension: str
+    extension_mismatch: bool
+    details: dict[str, Any]
+    first_name: str
+    first_submitted_by: str
+    submission_count: int
+    first_submitted_at: datetime
+    last_submitted_at: datetime
+
+
 class JobDetailOut(JobSummaryOut):
     # Present when the job was submitted as a file rather than as a value. The
     # stored path is deliberately absent: it is an internal location, and the
@@ -152,6 +175,7 @@ class JobDetailOut(JobSummaryOut):
     runtime_configuration: dict[str, Any]
     summary: dict[str, Any]
     started_at: datetime | None
+    sample: SampleOut | None = None
     reports: list[PluginReportOut]
 
 

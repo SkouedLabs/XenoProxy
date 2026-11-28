@@ -114,7 +114,7 @@ export interface JobFilters {
   observable_type?: string;
   tag?: string;
   requested_by?: string;
-  /** Narrow the history to one entry point: 'assistant', 'mcp', 'api', 'ui', 'pivot'. */
+  /** Narrow the history to one entry point: 'assistant', 'mcp', 'api', 'ui', 'pivot', 'public'. */
   origin?: string;
   /** true shows only jobs a pivot created, false only submitted ones. */
   derived?: boolean;

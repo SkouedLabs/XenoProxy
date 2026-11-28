@@ -46,6 +46,7 @@ from app.schemas.jobs import (
     PluginReportDetail,
     PluginReportOut,
     RecapOut,
+    SampleOut,
 )
 from app.services import (
     archives,
@@ -59,6 +60,7 @@ from app.services import (
     settings_store,
     uploads,
 )
+from app.services import samples as sample_records
 from app.services.export import job_to_markdown
 from app.services.observables import classify, refang
 
@@ -308,6 +310,15 @@ async def create_file_job(
     job.file_name = sample.display_name
     job.file_size = sample.size
     job.file_path = sample.path
+    # The file's identity and its trail. Recorded for every file, whatever the
+    # analysis later decides; a repeat submission adds to the same record.
+    job.sample = await sample_records.record(
+        session,
+        payload=payload,
+        stored=sample,
+        submitted_name=upload.filename,
+        actor=user.username,
+    )
     if archive is not None:
         job.runtime_configuration = {
             **(job.runtime_configuration or {}),
@@ -327,6 +338,8 @@ async def create_file_job(
             "archive": bool(archive),
             "file_name": sample.display_name,
             "file_size": sample.size,
+            "sample_id": str(job.sample.id),
+            "submission_count": job.sample.submission_count,
             "analyzers": job_request.selection.analyzers,
             "playbook": job_request.playbook_name,
         },
@@ -334,7 +347,7 @@ async def create_file_job(
     await session.commit()
 
     await request.app.state.queue.enqueue_job("run_job", str(job.id))
-    await session.refresh(job, ["reports"])
+    await session.refresh(job, ["reports", "sample"])
     return _job_detail(job)
 
 
@@ -1007,6 +1020,7 @@ def _job_detail(job: Job) -> JobDetailOut:
         runtime_configuration=dict(job.runtime_configuration or {}),
         summary=job.summary or {},
         started_at=job.started_at,
+        sample=SampleOut.model_validate(job.sample, from_attributes=True) if job.sample else None,
         reports=[
             PluginReportOut.model_validate(report, from_attributes=True)
             # Ordered by phase, then by name, so the UI shows the lifecycle in

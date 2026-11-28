@@ -5,13 +5,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+if TYPE_CHECKING:
+    from app.models.sample import Sample
 
 
 class ObservableType(StrEnum):
@@ -93,6 +96,8 @@ class JobOrigin(StrEnum):
     ASSISTANT = "assistant"
     MCP = "mcp"
     PIVOT = "pivot"
+    # Submitted without an account through the public submission route.
+    PUBLIC = "public"
 
 
 class Verdict(StrEnum):
@@ -115,6 +120,11 @@ class Job(Base):
     # Path inside the uploads volume. The bytes are kept so a sandbox
     # analyzer can submit the sample itself rather than only its hash.
     file_path: Mapped[str | None] = mapped_column(String(512))
+    # The record of the submitted file, for a job made from a file.
+    sample_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("samples.id", ondelete="SET NULL"), index=True
+    )
+    sample: Mapped[Sample | None] = relationship(lazy="selectin")
     status: Mapped[JobStatus] = mapped_column(
         Enum(JobStatus, name="job_status"), default=JobStatus.PENDING, nullable=False
     )

@@ -29,6 +29,13 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/logout"): "clearing a cookie must work for an expired session",
     ("GET", "/api/v1/auth/oidc/start"): "starting single sign-on, before any identity exists",
     ("GET", "/api/v1/auth/oidc/callback"): "the provider redirect that creates the session",
+    # Deliberate exception, reachable only when BACKEND_PUBLIC_SUBMISSION_ENABLED is set.
+    # It runs a fixed playbook at TLP:CLEAR and returns a reduced view; see test_public_submission.
+    (
+        "POST",
+        "/api/v1/public/submissions",
+    ): "anonymous submission, off unless the instance enables it",
+    ("GET", "/api/v1/public/submissions/{job_id}"): "reads one public result by its random id",
 }
 
 # Routes that only need an authenticated identity, with no further permission.
@@ -123,6 +130,7 @@ def test_mutating_routes_are_not_public() -> None:
         ("POST", "/api/v1/auth/login"),
         ("POST", "/api/v1/auth/login/mfa"),
         ("POST", "/api/v1/auth/logout"),
+        ("POST", "/api/v1/public/submissions"),
     }
     offenders = [
         f"{method} {path}"

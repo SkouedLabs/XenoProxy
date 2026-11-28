@@ -29,6 +29,7 @@ from app.api.v1 import (
     mcp,
     passwords,
     plugins,
+    public,
     takedown,
     yara,
 )
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     v1.include_router(takedown.router)
     v1.include_router(identity.router)
     v1.include_router(settings_routes.router)
+    v1.include_router(public.router)
     app.include_router(v1)
 
     @app.get("/api/health", tags=["system"], summary="Liveness and readiness probe")

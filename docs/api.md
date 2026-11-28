@@ -93,6 +93,25 @@ Every report keeps the provider's raw JSON alongside the normalised summary, and
 interface does not have a field for — "which jobs saw this certificate fingerprint", "every
 host that answered on port 8443" — without re-running a single source.
 
+## Public submission (optional, no account)
+
+When the deployment sets `BACKEND_PUBLIC_SUBMISSION_ENABLED=true`, anyone who can reach
+the API may submit an IP, domain, URL or hash without signing in. Otherwise both routes
+answer `404`.
+
+- `POST /api/v1/public/submissions` with `{"value": "..."}` returns `201` and the job's
+  public view. Each caller is limited to 10 submissions per hour per client address.
+- `GET /api/v1/public/submissions/{id}` returns the same view later, as the analysis
+  completes. The random job identifier is the only key.
+
+The route always runs the `Public submission` playbook at TLP:CLEAR. A caller cannot
+choose sources, connectors or pivots, and private addresses are refused. Each source is
+shared the observable, so the instance's quotas are spent on the public's behalf.
+
+The public view holds the observable, the verdict, the status of each source and its
+verdict. It does not hold the requester, groups, raw responses or stored paths.
+Signed-in users see public jobs in the history with the `public` origin.
+
 ## MCP servers
 
 Two Model Context Protocol servers, JSON-RPC 2.0 over Streamable HTTP, both off by default

@@ -14,6 +14,7 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from app.api.deps import client_ip
 from app.core.config import get_settings
 from app.core.errors import error_body
 from app.core.logging import get_logger, request_id_var
@@ -116,6 +117,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ("/api/v1/auth/password", 5, 300),
         ("/api/v1/auth/api-keys", 20, 3600),
         ("/api/v1/jobs", 60, 60),
+        # Anonymous submissions: each one spends the instance's API quotas.
+        ("/api/v1/public/submissions", 10, 3600),
     )
 
     def __init__(self, app: Any) -> None:
@@ -133,7 +136,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         _, limit, window = rule
-        identity = request.client.host if request.client else "unknown"
+        # Behind the reverse proxy the socket peer is the proxy itself, so every caller
+        # would share one bucket. client_ip honours the configured trusted hops.
+        identity = client_ip(request) or "unknown"
         key = (rule[0], identity)
         now = time.monotonic()
         bucket = self._hits[key]

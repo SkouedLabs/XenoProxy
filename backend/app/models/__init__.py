@@ -11,6 +11,7 @@ from app.models.plugin_config import (
     UserPluginConfig,
     UserPluginSecret,
 )
+from app.models.sample import Sample
 from app.models.setting import InstanceSetting
 from app.models.user import ApiKey, MfaRecoveryCode, Session, User
 
@@ -27,6 +28,7 @@ __all__ = [
     "PluginConfig",
     "PluginReport",
     "PluginSecret",
+    "Sample",
     "Session",
     "User",
     "UserPluginConfig",

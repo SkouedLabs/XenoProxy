@@ -26,6 +26,28 @@ logger = get_logger(__name__)
 # are shipped disabled.
 BUILTIN_PLAYBOOKS: tuple[dict[str, Any], ...] = (
     {
+        "name": "Public submission",
+        "description": (
+            "Reputation and threat-feed lookups for an observable submitted without an "
+            "account. Runs at TLP:CLEAR, so the sources that retain submissions are used."
+        ),
+        "observable_types": ["ip", "domain", "url", "hash"],
+        "analyzers": [
+            "virustotal",
+            "abuseipdb",
+            "shodan_internetdb",
+            "greynoise",
+            "dnsbl",
+            "urlhaus",
+            "threatfox",
+            "malwarebazaar",
+            "feodotracker",
+            "otx",
+            "google_safebrowsing",
+            "crowdsec",
+        ],
+    },
+    {
         "name": "Fast IP triage",
         "description": "Reputation, exposure and geolocation for an IP address.",
         "observable_types": ["ip"],

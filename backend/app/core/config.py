@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     require_mfa_for_all: bool = False
     require_mfa_for_admins: bool = True
 
+    # Lets anyone, without an account, submit an observable for the public
+    # playbook. Off unless the deployment asks for it: every such submission
+    # spends the instance's API quotas and is shared with the sources at TLP:CLEAR.
+    public_submission_enabled: bool = False
+
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12
 

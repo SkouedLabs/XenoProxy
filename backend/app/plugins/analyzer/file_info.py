@@ -21,22 +21,18 @@ Contract note: exercised against synthetic byte fixtures only.
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
-import math
 import re
-import struct
-from collections import Counter
 from typing import Any, ClassVar
 
 from app.models.job import ObservableType, Tlp, Verdict
 from app.plugins.base.analyzer import BaseAnalyzer
 from app.plugins.base.plugin import PluginResult, PluginSummary, ProviderInfo
 from app.plugins.base.registry import register
+from app.services.file_identity import identify, parse_pe, shannon_entropy
 from app.services.observables import Observable
 
 MAX_FILE_BYTES = 25 * 1024 * 1024
-_MAX_SECTIONS = 96
 _HEAD_BYTES = 256 * 1024
 _BINARY_KINDS = frozenset({"pe", "elf", "macho", "script"})
 _PACKED_FILE_ENTROPY = 7.2
@@ -61,90 +57,8 @@ _PACKER_SECTIONS = frozenset(
         ".nsp1",
     }
 )
-_PE_EXECUTE = 0x20000000
-_PE_WRITE = 0x80000000
-_PE_MACHINES = {0x014C: "x86", 0x8664: "x64", 0x01C0: "arm", 0xAA64: "arm64", 0x0200: "ia64"}
 _PDF_ACTIONS = re.compile(rb"/(JavaScript|JS|OpenAction|AA|Launch|EmbeddedFile|XFA)(?![A-Za-z])")
 _PDF_VERSION = re.compile(rb"^%PDF-(\d\.\d)")
-
-
-def shannon_entropy(data: bytes) -> float:
-    """Bits per byte, 0 to 8. Compressed or encrypted content sits near 8."""
-    if not data:
-        return 0.0
-    total = len(data)
-    return round(-sum((n / total) * math.log2(n / total) for n in Counter(data).values()), 3)
-
-
-def identify(payload: bytes) -> str:
-    """The format, read from the leading bytes. The file name is never trusted."""
-    if payload.startswith(b"MZ"):
-        return "pe" if parse_pe(payload) is not None else "dos"
-    if payload.startswith(b"\x7fELF"):
-        return "elf"
-    if payload.startswith((b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe")):
-        return "macho"
-    if payload.startswith(b"%PDF"):
-        return "pdf"
-    if payload.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if payload.startswith(b"\xff\xd8\xff"):
-        return "jpeg"
-    if payload.startswith((b"GIF87a", b"GIF89a")):
-        return "gif"
-    if payload.startswith(b"PK\x03\x04"):
-        return "zip"
-    if payload.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
-        return "ole"
-    if payload.startswith(b"#!"):
-        return "script"
-    return "unknown"
-
-
-def parse_pe(payload: bytes) -> dict[str, Any] | None:
-    """The COFF header and section table of a PE file, or None when it is not one."""
-    try:
-        (e_lfanew,) = struct.unpack_from("<I", payload, 0x3C)
-        if payload[e_lfanew : e_lfanew + 4] != b"PE\x00\x00":
-            return None
-        machine, count, stamp, _symbols, _nsyms, opt_size, characteristics = struct.unpack_from(
-            "<HHIIIHH", payload, e_lfanew + 4
-        )
-        table = e_lfanew + 4 + 20 + opt_size
-        sections: list[dict[str, Any]] = []
-        for index in range(min(count, _MAX_SECTIONS)):
-            raw_name, _vsize, _vaddr, raw_size, raw_ptr, _reloc, _lines, _nrel, _nlines, flags = (
-                struct.unpack_from("<8sIIIIIIHHI", payload, table + index * 40)
-            )
-            name = raw_name.rstrip(b"\x00").decode("ascii", "replace")
-            data = payload[raw_ptr : raw_ptr + raw_size]
-            sections.append(
-                {
-                    "name": name,
-                    "size": raw_size,
-                    "entropy": shannon_entropy(data),
-                    "executable": bool(flags & _PE_EXECUTE),
-                    "writable": bool(flags & _PE_WRITE),
-                }
-            )
-    except struct.error:
-        return None
-    return {
-        "machine": _PE_MACHINES.get(machine, f"0x{machine:04x}"),
-        "compiled_at": _timestamp(stamp),
-        "characteristics": f"0x{characteristics:04x}",
-        "sections": sections,
-    }
-
-
-def _timestamp(stamp: int) -> str | None:
-    # Zero is what reproducible builds write, so it is reported as absent, not as 1970.
-    if stamp == 0:
-        return None
-    try:
-        return dt.datetime.fromtimestamp(stamp, dt.UTC).isoformat()
-    except (OverflowError, OSError, ValueError):
-        return None
 
 
 def parse_pdf(payload: bytes) -> dict[str, Any]:
