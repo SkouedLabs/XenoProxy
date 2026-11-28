@@ -171,7 +171,7 @@ async def candidate_plugins(
     skipped: list[SkippedPlugin] = []
 
     for cls in iter_plugins(plugin_type):
-        local_on_file = has_sample and cls.reads_local_sample
+        local_on_file = has_sample and getattr(cls, "reads_local_sample", False)
         if not (cls.supports(observable_type) or local_on_file):
             skipped.append(
                 SkippedPlugin(

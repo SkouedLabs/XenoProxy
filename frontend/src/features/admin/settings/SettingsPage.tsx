@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api-client';
 import type { ProbeResult, SectionValues } from '@/lib/types';
 import { ScalarSection } from './ScalarSection';
 import { AssistantProfiles, PROFILE_OWNED } from './AssistantProfiles';
+import { McpInfo } from './McpInfo';
 import { PROXY_OWNED, ProxyProfiles } from './ProxyProfiles';
 import { SectionForm } from './SectionForm';
 import { settingsApi } from './api';
@@ -368,6 +369,7 @@ export function InstanceSettingsPage() {
                     In force now: {config.outbound_route}
                   </p>
                 ) : null}
+                {tab.id === 'mcp' ? <McpInfo /> : null}
               </SectionForm>
             </>
           )}

@@ -432,8 +432,10 @@ class BasePlugin(abc.ABC):
         except PluginConfigurationError as exc:
             result = PluginResult(status=ReportStatus.FAILED, error=str(exc))
         except PluginQuotaError as exc:
+            # Plugins also raise this for a rejected key or a plan without API
+            # access, so the message names the cause and the prefix stays neutral.
             result = PluginResult(
-                status=ReportStatus.FAILED, error=f"Provider quota or rate limit reached: {exc}"
+                status=ReportStatus.FAILED, error=f"Provider refused the request: {exc}"
             )
         except TimeoutError:
             result = PluginResult(

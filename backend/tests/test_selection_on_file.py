@@ -89,3 +89,17 @@ async def test_a_hash_job_without_a_file_is_unchanged(no_db) -> None:
         if cls.reads_local_sample or ObservableType.HASH not in cls.supported_types:
             continue
         assert cls.name in runnable, cls.name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", [PluginKind.CONNECTOR, PluginKind.PIVOT])
+async def test_a_file_job_resolves_connectors_and_pivots_too(no_db, kind) -> None:
+    # Only analyzers declare reads_local_sample; the other kinds must not crash on it.
+    runnable, skipped = await orchestrator.candidate_plugins(
+        None,
+        plugin_type=kind,
+        observable_type=ObservableType.HASH,
+        job_tlp=Tlp.AMBER,
+        has_sample=True,
+    )
+    assert isinstance(runnable, list) and isinstance(skipped, list)

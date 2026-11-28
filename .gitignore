@@ -55,3 +55,6 @@ AGENTS.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local test notebook, never versioned
+CAHIER_DE_TESTS.local.md
