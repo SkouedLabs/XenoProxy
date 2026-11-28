@@ -2,6 +2,8 @@
 
 One row per content, keyed by SHA-256. A job made from a file points at it.
 
+Guarded like every revision after the baseline; see `app.core.schema_guards`.
+
 Revision ID: 0014
 Revises: 0013
 """
@@ -9,8 +11,9 @@ Revises: 0013
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from app.core import schema_guards as guards
 
 revision = "0014"
 down_revision = "0013"
@@ -19,7 +22,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    guards.create_table(
         "samples",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("sha256", sa.String(64), nullable=False, unique=True),
@@ -50,7 +53,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
-    op.add_column(
+    guards.add_column(
         "jobs",
         sa.Column(
             "sample_id",
@@ -59,10 +62,11 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
-    op.create_index("ix_jobs_sample_id", "jobs", ["sample_id"])
+    guards.create_index("ix_jobs_sample_id", "jobs", ["sample_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_jobs_sample_id", table_name="jobs")
-    op.drop_column("jobs", "sample_id")
-    op.drop_table("samples")
+    guards.drop_index("ix_jobs_sample_id", "jobs")
+    guards.drop_column("jobs", "sample_id")
+    if guards.has_table("samples"):
+        guards.op.drop_table("samples")

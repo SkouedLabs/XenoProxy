@@ -55,17 +55,148 @@ walk the investigation in either direction.
 **JSON** contains everything, including raw payloads, and is meant for tooling.
 **Markdown** is a readable incident write-up. Both are listed in the audit trail.
 
-## Calling XenoProxy from a script or an automation tool
+## Using the API from a script
 
-Create a token in **My access**, then send it as `Authorization: Bearer <token>`.
-The token carries your own permissions, is shown once and can be revoked.
+Everything the interface does is available over HTTP. The recipes below use `curl`; replace
+`$HOST` with your instance's address and `$TOKEN` with your token.
 
+### 1. Get a token
+
+Open **My access**, create a token and copy it: it is shown once. It starts with
+`xenoproxy_`, acts as you with your own permissions, expires after a year by default and
+can be revoked at any time. Send it on every call:
+
+```bash
+export HOST=https://xenoproxy.example.org
+export TOKEN=xenoproxy_...
+curl -s "$HOST/api/v1/jobs?page_size=5" -H "Authorization: Bearer $TOKEN"
 ```
-POST /api/v1/jobs      {"observable": "8.8.8.8", "playbook": "Fast IP triage"}
-GET  /api/v1/jobs/{id} until "status" is SUCCESS, PARTIAL_FAILURE or FAILED
+
+No other header is needed with a token.
+
+### 2. Submit an analysis
+
+```bash
+curl -s -X POST "$HOST/api/v1/jobs"   -H "Authorization: Bearer $TOKEN"   -H "Idempotency-Key: $(uuidgen)"   -H 'Content-Type: application/json'   -d '{"observable": "1.1.1[.]1", "playbook": "Fast IP triage", "tags": ["incident-42"], "tlp": "AMBER"}'
 ```
 
-Send an `Idempotency-Key` header on POST so a retry cannot create a second job.
+The answer is `201` with the job and its `id`. Only `observable` is required.
+
+| Field | Meaning |
+|---|---|
+| `observable` | IP, domain, URL, hash or generic value. Defanged input is accepted |
+| `playbook` | A playbook name: a ready-made set of sources |
+| `analyzers`, `connectors`, `pivots` | Names to run. `plugins` takes names of any kind |
+| `tags` | Up to 20 tags |
+| `tlp` | `CLEAR`, `GREEN`, `AMBER` or `RED`: caps what may touch the observable |
+| `scan_mode` | `force_new` to bypass the cache, like **Force a refresh** |
+| `runtime_configuration` | Option overrides for this job only, keyed by plugin name |
+
+With neither `playbook` nor `analyzers`, every analyzer that supports the type runs.
+Connectors and pivots are never implied: naming one is what turns it on.
+List what exists with `GET /api/v1/plugins` and `POST /api/v1/jobs/preview`.
+
+The `Idempotency-Key` makes a retry safe: the same key with the same body returns the
+first answer instead of creating a second job. Use a fresh key for each new analysis.
+
+### 3. Submit a file
+
+```bash
+curl -s -X POST "$HOST/api/v1/jobs/file"   -H "Authorization: Bearer $TOKEN"   -F file=@sample.zip   -F archive_password=infected   -F 'options={"tlp": "RED", "tags": ["incident-42"]}'
+```
+
+The form carries `file` (up to 32 MiB), `options` (the same JSON as above, optional) and
+`archive_password` (optional). The file's SHA-256 becomes the observable, and the job's
+`sample` holds the hashes and the static inspection. The file is never sent to a provider
+unless an administrator allowed it.
+
+### 4. Wait for the result
+
+A job is finished when `status` is `SUCCESS`, `PARTIAL_FAILURE` (some sources failed),
+`FAILED` or `KILLED`. Poll until then:
+
+```bash
+while :; do
+  S=$(curl -s "$HOST/api/v1/jobs/$ID" -H "Authorization: Bearer $TOKEN" | jq -r .status)
+  case "$S" in PENDING|RUNNING) sleep 3;; *) break;; esac
+done
+echo "$S"
+```
+
+A pushed stream is also available at `GET /api/v1/jobs/{id}/events` (server-sent events).
+
+### 5. Read the result
+
+```bash
+# Verdict and status at a glance
+curl -s "$HOST/api/v1/jobs/$ID" -H "Authorization: Bearer $TOKEN"   | jq '{status, verdict, tlp, sources: [.reports[] | {plugin: .plugin_name, status, verdict: .summary_data.verdict}]}'
+
+# One source's raw provider payload
+curl -s "$HOST/api/v1/jobs/$ID/reports/virustotal/raw" -H "Authorization: Bearer $TOKEN"
+
+# A report to attach to a ticket
+curl -s "$HOST/api/v1/jobs/$ID/export?format=markdown" -H "Authorization: Bearer $TOKEN"
+```
+
+`verdict` is `clean`, `suspicious`, `malicious` or `unknown`: the worst one any analyzer
+reported. `GET /api/v1/jobs/{id}/recap` gives the facts and the relation graph, and
+`/children` lists the jobs a pivot created.
+
+### 6. Pull results in bulk
+
+`GET /api/v1/jobs/results` returns many jobs with each source's normalised outcome, without
+the raw payloads. It takes the same filters as the history and `page_size` up to 100:
+
+```bash
+# Everything malicious since 1 November, from Shodan, as a table
+curl -s "$HOST/api/v1/jobs/results?verdict=malicious&created_from=2026-11-01T00:00:00Z&plugin=shodan&page_size=100"   -H "Authorization: Bearer $TOKEN"   | jq -r '.items[] | [.observable_value, .verdict, .created_at] | @tsv'
+```
+
+Useful filters: `search`, `observable_type`, `status`, `verdict`, `tlp`, `tag`,
+`origin`, `requested_by`, `plugin`, `plugin_status`, `created_from`, `created_to`, `order`,
+`page`. A token only sees what its account can see.
+
+### A complete script in Python
+
+```python
+import os, time, requests
+
+host = os.environ["HOST"]
+http = requests.Session()
+http.headers["Authorization"] = f"Bearer {os.environ['TOKEN']}"
+
+job = http.post(f"{host}/api/v1/jobs", json={"observable": "example.com"},
+                headers={"Idempotency-Key": "example-com-2026-11-28"}).json()
+
+while job["status"] in ("PENDING", "RUNNING"):
+    time.sleep(3)
+    job = http.get(f"{host}/api/v1/jobs/{job['id']}").json()
+
+print(job["verdict"], [(r["plugin_name"], r["status"]) for r in job["reports"]])
+```
+
+### When it goes wrong
+
+| Answer | Meaning |
+|---|---|
+| `401` | Missing, revoked or expired token |
+| `403` | Your role lacks the permission |
+| `404` | Unknown job, a job you may not see, or a route that is disabled (public mode) |
+| `422` | The body is invalid; the answer names the field |
+| `429` | Rate limit reached (60 submissions a minute): wait, then retry with the same `Idempotency-Key` |
+
+### Without an account: public mode
+
+If your administrator enabled it, an IP, domain, URL or hash can be submitted with no token:
+
+```bash
+curl -s -X POST "$HOST/api/v1/public/submissions"   -H 'Content-Type: application/json' -d '{"value": "example.com"}'
+curl -s "$HOST/api/v1/public/submissions/$ID"
+```
+
+It always runs a fixed set of sources at TLP:CLEAR and returns the verdict and each source's
+verdict, with a limit of 10 submissions an hour per address. A `404` means public mode is off.
+Signed-in users find these jobs in the history with the origin `public`.
 
 ## Keyboard
 
@@ -95,6 +226,38 @@ your team uses regularly.
 An archive holding several files keeps its own digest as the observable, and
 lists the inner hashes for you to pick from — guessing which one you meant
 would be worse than saying so. An archive inside an archive is not opened.
+
+### File inspection (alpha)
+
+Every file is also read on the instance, in a few seconds, and the job page shows
+a **File inspection** card: MD5, SHA-1 and SHA-256, the real format (from the bytes,
+not the name), size, entropy, how many times the team has submitted it, and what
+the reading found. Nothing is run and nothing leaves the instance, so it applies
+at every TLP level, RED included.
+
+It looks for what a first-minute triage looks for:
+
+- a name that lies: wrong extension for the content, `invoice.pdf.exe`, or a
+  right-to-left override character;
+- packed or encrypted content (near-random bytes);
+- in a Windows executable: sections that are both writable and executable,
+  process-injection and download APIs, a compile date in the future;
+- in a PDF: launch actions and JavaScript that runs on open;
+- in an Office file: macros that run on open and what they call;
+- in a script: encoded commands, run-a-string-as-code and download calls;
+- in an archive: names that escape the folder, password-protected members,
+  executables, a compression ratio typical of a bomb. The files inside are read in
+  memory, one level deep, and listed with their own findings.
+
+Findings come in four levels (info, notice, warning, alert). A warning or an alert
+makes the inspection **suspicious**. It never says malicious, and it **does not change
+the job's verdict or its Xeno-score**: a static heuristic misfires on legitimate
+software, so only a YARA match or a provider decides that.
+
+"No static indicator" is not "safe". A packed file hides its imports, a PDF can
+keep its actions in compressed streams, and a password-protected member cannot be
+read at all. This is triage, not a sandbox. A file recorded before this feature
+existed shows as not inspected.
 
 ### Whether the file itself leaves
 

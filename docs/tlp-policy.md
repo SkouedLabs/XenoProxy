@@ -41,6 +41,11 @@ header parsing, string extraction, entropy. A test checks statically that nothin
 or `os.popen`. Beyond that, the containers are read-only with no shell, and the backend
 installs a guard that refuses process creation at runtime.
 
+The same holds for the file inspection shown on every uploaded file: it reads the bytes
+(and, for an archive, its members in memory, one level deep, never written to disk), runs
+at every TLP level because nothing leaves, and only ever says suspicious. The same static
+test covers it.
+
 ## Trusted internal services
 
 An administrator can mark a workflow they run as trusted with the `trusted_internal` option

@@ -242,6 +242,11 @@ services:
       BACKEND_REQUIRE_MFA_FOR_ALL:
       BACKEND_REQUIRE_MFA_FOR_ADMINS:
       BACKEND_TRUSTED_PROXY_COUNT: "1"
+      # Public submission: anyone who can reach the API may submit an IP, domain,
+      # URL or hash without an account. Off by default. Turn it on with
+      # XENOPROXY_PUBLIC_SUBMISSION=true in a .env beside this file, then run
+      # `docker compose up -d api`. See docs/help/administrator.md.
+      BACKEND_PUBLIC_SUBMISSION_ENABLED: ${XENOPROXY_PUBLIC_SUBMISSION:-false}
       BACKEND_ALLOW_PRIVATE_TARGETS: "false"
       BACKEND_ANALYZER_MAX_CONCURRENCY: "8"
       BACKEND_PLUGINS_ENABLED: "true"

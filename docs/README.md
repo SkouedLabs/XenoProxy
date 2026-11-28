@@ -18,7 +18,7 @@ analysts. Start with [Getting started](install.md); the rest is read when you ne
 
 | Page | What is in it |
 |---|---|
-| [Analyst guide](help/analyst.md) | Submitting an observable, reading a verdict, the cache, exporting a report. A condensed version is served in the application under the `?` button. |
+| [Analyst guide](help/analyst.md) | Submitting an observable or a file, reading a verdict, the cache, exporting a report, and using the API from a script (token, submit, wait, read, bulk pull). A condensed version is served in the application under the `?` button. |
 | [Plugins and playbooks](plugins.md) | The three plugin types, the analyzer catalogue with what each provider needs, playbooks, the cache, and how configuration layers resolve. |
 | [REST API and MCP](api.md) | Authenticating a script, the endpoints, personal tokens, and the two MCP servers. |
 | [TLP policy](tlp-policy.md) | Which tool may run at which handling level, what stays inside, and why no sample is ever executed. |
@@ -29,7 +29,7 @@ analysts. Start with [Getting started](install.md); the rest is read when you ne
 | Page | What is in it |
 |---|---|
 | [Users, rights and authentication](users-and-rights.md) | Roles and permissions, local accounts, OpenID Connect, LDAP, group mapping, two-factor authentication, API tokens. |
-| [Administrator guide](help/administrator.md) | The same ground from the interface's point of view, step by step. A condensed version is served in the application under the `?` button. |
+| [Administrator guide](help/administrator.md) | The same ground from the interface's point of view, step by step, including how to enable public submission and give a script access. A condensed version is served in the application under the `?` button. |
 | [Security](security.md) | What the product does for credentials, egress, authorization, integrity and containment — and what is left to you. |
 | [Threat model](threat-model.md) | Assets, trust boundaries, the risks considered and the control answering each. |
 

@@ -79,11 +79,28 @@ Rules come from two places, both under the `yara_rules` volume (`/app/yara_rules
   To manage them from the host, bind-mount a folder instead of the named volume:
   `./yara-rules:/app/yara_rules`, and keep your files in `./yara-rules/custom/`
   (readable by UID 10001).
-- `sources/`: public rulesets pulled from **Admin, YARA rules** (Neo23x0
-  signature-base, Elastic protections-artifacts, Yara-Rules). The worker downloads
-  them, since it is the only container with an outbound route. The archive digest
-  is recorded with every pull, and the branch is not pinned, so an update takes
-  whatever the project published. Check each ruleset's licence before commercial use.
+- `sources/`: public rulesets pulled from **Admin, YARA rules**. The worker downloads
+  them, since it is the only container with an outbound route. A pull is started by
+  an administrator, never on a schedule. Set `BACKEND_YARA_PULL_ENABLED=false` to
+  refuse all pulls. Available sources:
+
+  | Id | Ruleset | Licence |
+  |---|---|---|
+  | `signature-base` | Neo23x0 signature-base | Detection Rule License 1.1 |
+  | `elastic` | Elastic protections-artifacts | Elastic License 2.0 |
+  | `yara-rules` | Yara-Rules community | GPL-2.0 |
+  | `reversinglabs` | ReversingLabs YARA rules | MIT |
+  | `bartblaze` | Bartblaze YARA rules | MIT |
+  | `mcafee-atr` | McAfee Advanced Threat Research | Apache-2.0 |
+  | `loldrivers` | LOLDrivers (vulnerable and malicious drivers) | Apache-2.0 |
+  | `stratosphere` | Stratosphere IPS malware rules | CC-BY-SA-4.0 (share-alike) |
+
+  The archive digest is recorded with every pull, and the branch is not pinned, so
+  an update takes whatever the project published. Check each ruleset's licence before
+  commercial use. Sources that were checked and left out: the Huntress repository
+  (not reachable at its published address), the Mandiant countermeasures (one
+  incident-specific file, no folder to pull), and Intezer, InQuest, JPCERT, dr4k0nia,
+  StrangerealIntel and elceef, whose rule layout or licence could not be confirmed.
 
 A rule file that does not compile is left out and reported, so one broken community
 rule does not disable the rest. `BACKEND_YARA_PULL_ENABLED=false` disables pulling

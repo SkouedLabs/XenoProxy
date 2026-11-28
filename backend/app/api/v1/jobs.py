@@ -319,6 +319,10 @@ async def create_file_job(
         submitted_name=upload.filename,
         actor=user.username,
     )
+    # Static triage of the bytes, shown to the user. Never changes the verdict.
+    await sample_records.attach_inspection(
+        job.sample, payload=payload, submitted_name=upload.filename
+    )
     if archive is not None:
         job.runtime_configuration = {
             **(job.runtime_configuration or {}),

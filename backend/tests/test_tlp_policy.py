@@ -56,9 +56,15 @@ def test_plugins_that_reach_outside_are_capped_at_amber(name: str) -> None:
 def test_no_plugin_can_start_a_process_or_evaluate_code() -> None:
     banned_calls = {"eval", "exec", "system", "popen", "Popen", "run", "call", "check_output"}
     banned_modules = {"subprocess", "pty", "ctypes"}
-    root = Path(__file__).resolve().parent.parent / "app" / "plugins"
+    app = Path(__file__).resolve().parent.parent / "app"
+    # The file inspection reads submitted bytes too, so it is held to the same rule.
+    sources = [
+        *(app / "plugins").rglob("*.py"),
+        app / "services" / "inspection.py",
+        app / "services" / "file_identity.py",
+    ]
     offenders: list[str] = []
-    for path in root.rglob("*.py"):
+    for path in sources:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

@@ -1,4 +1,4 @@
-/** Embedded help, bundled at build time from docs/help. */
+/** Embedded help: a condensed version of docs/help, kept in step by hand. */
 
 import { PageHeader } from './AppShell';
 import { Card } from '@/components/ui';
@@ -44,10 +44,30 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ],
   },
   {
-    title: 'Calling XenoProxy from a script or an automation tool',
+    title: 'Analysing a file',
     body: [
-      'Create a personal token in My access and send it as an Authorization: Bearer header. The token carries your own permissions.',
-      'POST /api/v1/jobs with an observable and either analyzers or a playbook, then poll GET /api/v1/jobs/{id} until the status is terminal.',
+      'On New scan, "Analyse a file instead" takes a sample from your machine. A password-protected archive is opened only to hash what is inside, and the conventional passwords such as infected are tried for you.',
+      'Every file is also read on the instance: hashes, real format, entropy and a first-minute triage of what looks suspicious (alpha). Nothing is run and nothing leaves, at any TLP level. It never changes the verdict. "No static indicator" is not "safe".',
+      'The file itself is not sent to providers unless an administrator allowed it; only its hashes are.',
+    ],
+  },
+  {
+    title: 'Using the API from a script',
+    body: [
+      '1. Create a token in My access (shown once, expires after a year, acts with your permissions) and send it as Authorization: Bearer <token>. No other header is needed.',
+      '2. Submit: POST /api/v1/jobs with {"observable": "1.1.1[.]1", "playbook": "Fast IP triage", "tags": [...], "tlp": "AMBER"}. Only observable is required. Add an Idempotency-Key header so a retry cannot create a second job. For a file: POST /api/v1/jobs/file as multipart with file, and optionally options (JSON) and archive_password.',
+      '3. Wait: GET /api/v1/jobs/{id} every few seconds while status is PENDING or RUNNING. It is finished at SUCCESS, PARTIAL_FAILURE, FAILED or KILLED.',
+      '4. Read: the job holds verdict (clean, suspicious, malicious, unknown) and a report per source. GET /api/v1/jobs/{id}/reports/{plugin}/raw gives one raw payload, and /export?format=markdown a write-up.',
+      '5. In bulk: GET /api/v1/jobs/results filters by verdict, tag, plugin, date, origin or submitter and returns each source’s outcome, 100 jobs per page.',
+      'A 429 means the rate limit was reached: wait and retry with the same Idempotency-Key. Full recipes with curl and Python are in docs/help/analyst.md and docs/api.md.',
+    ],
+  },
+  {
+    title: 'Public submission (administrators)',
+    body: [
+      'Public mode lets anyone who can reach the API submit an IP, domain, URL or hash without an account, through POST /api/v1/public/submissions with {"value": "..."}. Read the result back with GET /api/v1/public/submissions/{id}. While it is off both routes answer 404.',
+      'It can only be turned on from the environment: set XENOPROXY_PUBLIC_SUBMISSION=true in the .env file beside docker-compose.yml, then run docker compose up -d api. Remove it to turn it off.',
+      'Public jobs always use the Public submission playbook at TLP:CLEAR, are limited to 10 per hour per client address, and spend your own source quotas. Trim that playbook in Admin, Playbooks, and set BACKEND_TRUSTED_PROXY_COUNT behind a reverse proxy. Public jobs show in the history with the origin public.',
     ],
   },
 ];

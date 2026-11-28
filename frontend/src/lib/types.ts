@@ -143,7 +143,56 @@ export interface JobSummary {
   depth: number;
 }
 
+export type InspectionSeverity = 'info' | 'notice' | 'warning' | 'alert';
+
+export interface InspectionFinding {
+  severity: InspectionSeverity;
+  code: string;
+  message: string;
+  /** Set when the finding comes from a file inside an archive. */
+  member?: string;
+}
+
+export interface InspectionMember {
+  name: string;
+  size?: number;
+  sha256?: string;
+  kind?: string | null;
+  verdict?: 'clean' | 'suspicious' | 'unknown';
+  findings?: InspectionFinding[];
+  /** Why the member was not read: password-protected, too large, member cap. */
+  skipped?: string;
+}
+
+export interface Inspection {
+  version: number;
+  verdict: 'clean' | 'suspicious' | 'unknown';
+  findings: InspectionFinding[];
+  members: InspectionMember[];
+  inspected_at: string;
+}
+
+/** What was recorded about a submitted file. */
+export interface SampleRecord {
+  sha256: string;
+  sha1: string;
+  md5: string;
+  size: number;
+  kind: string;
+  mime: string;
+  entropy: number;
+  extension: string;
+  extension_mismatch: boolean;
+  details: { inspection?: Inspection; pe?: Record<string, unknown> };
+  first_name: string;
+  first_submitted_by: string;
+  submission_count: number;
+  first_submitted_at: string;
+  last_submitted_at: string;
+}
+
 export interface JobDetail extends JobSummary {
+  sample?: SampleRecord | null;
   /** Present when the job was submitted as a file rather than a value. */
   file_name: string | null;
   file_size: number | null;

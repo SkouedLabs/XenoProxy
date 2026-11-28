@@ -259,3 +259,105 @@ credential**: moving an API key between instances through a browser download is
 how a key ends up in a ticket. **Import** validates the whole document before
 applying anything, keeps this instance's own secrets, and skips what the
 environment pins here.
+
+
+## Enabling public submission
+
+Public mode lets anyone who can reach the API submit an IP, domain, URL or hash **without an
+account**. It is meant for a landing page or a "check this link" form. It is off by default,
+and while it is off both public routes answer `404`, as if they did not exist.
+
+It is an environment setting on purpose: nothing in the interface or the API can turn it on,
+so a compromised account cannot expose the instance.
+
+1. Create or edit the `.env` file beside `docker-compose.yml`:
+
+   ```bash
+   XENOPROXY_PUBLIC_SUBMISSION=true
+   ```
+
+2. Recreate the API container so it reads the value:
+
+   ```bash
+   docker compose up -d api
+   ```
+
+3. Check it. A request without a token must now return `201` instead of `404`:
+
+   ```bash
+   curl -s -X POST https://xenoproxy.example.org/api/v1/public/submissions \
+     -H 'Content-Type: application/json' -d '{"value": "example.com"}'
+   ```
+
+To switch it off, remove the line (or set it to `false`) and run `docker compose up -d api`
+again. Jobs already created stay in the history.
+
+### What a public caller gets
+
+- The job always runs the **Public submission** playbook, at **TLP:CLEAR**. The caller
+  cannot choose sources, connectors, pivots or a TLP, and private addresses are refused.
+- The answer holds the observable, the verdict, and each source's status and verdict. It
+  never holds the requester, groups, raw provider responses or stored paths.
+- The random job identifier is the only key to read a result back. Anyone who has the link
+  can read it; nobody can list the others.
+- Each caller is limited to **10 submissions per hour per client address**.
+
+### Before you switch it on
+
+- **Quotas.** Every submission is sent to every source in the playbook, so your own API
+  quotas are spent on the public's behalf. Open **Admin, Playbooks**, find *Public
+  submission* and keep only the sources you can afford to spend.
+- **Disclosure.** TLP:CLEAR means sources that publish or index an observable may run. If
+  that is not acceptable, remove them from the playbook.
+- **Client address.** Behind a reverse proxy, set `BACKEND_TRUSTED_PROXY_COUNT` to the
+  number of proxies in front of the API (default `1`). A wrong value makes every visitor
+  share one address, and so one limit, or lets a caller choose their own address.
+- **Exposure.** Put the instance behind your usual reverse proxy and its own rate limit. The
+  limit inside XenoProxy is per process and in memory; it is a safety net, not a firewall.
+
+### Following what the public does
+
+Public jobs appear in the history with the origin **public**, filterable with
+`origin=public`, and each submission is written to the audit trail as `job.create_public`.
+They count in the service statistics like any other job.
+
+## Giving a script access to the API
+
+A script uses a **personal token**: it acts as the person who created it, with exactly their
+permissions. Give an automation its own account with the narrowest role that works (an
+analyst role is enough to submit and read), and have that account create the token under
+**My access**. The token is shown once; revoke and replace it when a person leaves or the
+token leaks.
+
+- Revoking a token takes effect on the next request. Disabling the account revokes all of
+  its tokens at once.
+- A token expires after 365 days by default (1 to 3650 when created). Rotate before then.
+- Every call is audited with the token that made it.
+- A token is rate-limited like a session: 60 writing calls per minute per client address on
+  `/api/v1/jobs`. A script that gets `429` should wait and retry.
+
+The recipes for submitting and reading results are in the analyst help and in
+[docs/api.md](../api.md). The MCP servers, for agents, are enabled under **Settings › MCP**.
+
+## YARA rules
+
+The `yara_local` analyzer scans files with the rules in the `yara_rules` volume. Put your own
+`.yar` files in its `custom/` folder (or bind-mount a host folder there). **Admin, YARA
+rules** also pulls public rulesets on demand. A pull is never scheduled and never runs by
+itself: you press it, and the overview shows how many rule files each source holds. A source
+that reports `files: 0` was reached but matched nothing, which usually means the path prefix
+in its definition is wrong.
+
+Rules are only read and compiled. A rule cannot run code, and the scan never executes the
+sample.
+
+## File inspection
+
+Every uploaded file is read on the instance and recorded with its hashes, format, size and
+entropy, and a first-minute triage of what is suspicious in it. Nothing is executed and
+nothing leaves the instance, so it runs at every TLP level. It is shown on the job page and
+in `sample.details.inspection` of the API. It never changes a verdict or a score. See the
+analyst help for what it looks for and what it cannot tell.
+
+Uploads are limited to 32 MiB (`BACKEND_MAX_UPLOAD_BYTES`). Archives are read in memory, one
+level deep, with caps on the number and size of their members.

@@ -17,9 +17,12 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.sample import Sample
-from app.services import file_identity
+from app.services import file_identity, inspection
 from app.services.uploads import StoredSample
+
+logger = get_logger(__name__)
 
 
 async def record(
@@ -68,6 +71,23 @@ async def record(
         await session.execute(select(Sample).where(Sample.sha256 == profile["sha256"]))
     ).scalar_one()
     return row
+
+
+async def attach_inspection(sample: Sample, *, payload: bytes, submitted_name: str | None) -> None:
+    """Static inspection of the content, stored once on the record.
+
+    A content already inspected is not inspected again: the result depends only on
+    the bytes. A failure never fails the upload; it is recorded as unknown.
+    """
+    if "inspection" in (sample.details or {}):
+        return
+    try:
+        result = await inspection.inspect_file(payload, submitted_name=submitted_name)
+    except Exception as exc:
+        logger.warning("inspection_failed", sha256=sample.sha256, error=str(exc)[:160])
+        result = inspection.failed("The inspection could not be completed.")
+    # A new dict: assigning a mutated one would not mark the JSONB column as changed.
+    sample.details = {**(sample.details or {}), "inspection": result}
 
 
 def _details(profile: dict[str, Any]) -> dict[str, Any]:

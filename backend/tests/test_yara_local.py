@@ -219,3 +219,15 @@ async def test_a_failed_download_installs_nothing(
 async def test_an_unknown_ruleset_is_refused(rules_dir: Path) -> None:
     with pytest.raises(yara_rules.PullError):
         await yara_rules.pull("../../etc")
+
+
+def test_every_public_source_is_a_safe_id_pinned_to_codeload_with_a_folder_prefix() -> None:
+    ids = [source.id for source in yara_rules.SOURCES]
+    assert len(ids) == len(set(ids))
+    for source in yara_rules.SOURCES:
+        assert yara_rules._SAFE_ID.match(source.id), source.id
+        assert source.url.startswith("https://codeload.github.com/"), source.id
+        assert source.include_prefix.endswith("/"), source.id
+        assert not source.include_prefix.startswith("/"), source.id
+        assert ".." not in source.include_prefix, source.id
+        assert source.licence.strip(), source.id

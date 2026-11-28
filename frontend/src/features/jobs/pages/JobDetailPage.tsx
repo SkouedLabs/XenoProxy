@@ -50,6 +50,7 @@ import type { Detection, JobDetail, ObservableType, PluginReport, PluginType } f
 import { jobsApi } from '../api';
 import { Author } from '../components/Author';
 import { DetectionGraph } from '../components/DetectionGraph';
+import { SampleCard } from '../components/SampleCard';
 
 const TERMINAL = new Set(['SUCCESS', 'PARTIAL_FAILURE', 'FAILED', 'KILLED']);
 
@@ -757,6 +758,8 @@ export function JobDetailPage() {
       <div className="mt-4">
         {activeTab === 'overview' ? (
           <>
+            {job.sample ? <SampleCard sample={job.sample} /> : null}
+
             <Card
               title={
                 <span className="flex items-center gap-2">

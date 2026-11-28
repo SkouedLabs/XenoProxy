@@ -2,7 +2,9 @@
 
 [Documentation](README.md) · [Users, rights and authentication](users-and-rights.md)
 
-Everything the interface does is a REST endpoint. The interface has no privileged path of
+Step-by-step recipes (submit, wait, read, bulk pull, files, public mode) are in the
+[analyst help](help/analyst.md#using-the-api-from-a-script). Step-by-step recipes (submit, wait, read, bulk pull, files, public mode) are in the
+[analyst help](help/analyst.md#using-the-api-from-a-script). Everything the interface does is a REST endpoint. The interface has no privileged path of
 its own, so anything an analyst can do by hand, a script can do with their token.
 
 ## Authenticating a script
@@ -12,11 +14,10 @@ permissions, and it is shown once.
 
 ```bash
 curl -s https://xenoproxy.example.org/api/v1/jobs \
-  -H 'Authorization: Bearer <token>' \
-  -H 'X-Requested-With: XMLHttpRequest'
+  -H 'Authorization: Bearer <token>'
 ```
 
-Writing calls also take an `Idempotency-Key` header: the same key with the same body
+A token needs no other header. Writing calls also take an `Idempotency-Key` header: the same key with the same body
 returns the stored response instead of submitting twice, which is what makes a retry safe.
 
 ## Endpoints
@@ -27,9 +28,10 @@ returns the stored response instead of submitting twice, which is what makes a r
 | GET | `/api/v1/auth/oidc/start` | public | Begin single sign-on |
 | POST | `/api/v1/jobs/preview` | `jobs:read` | Classify an observable and list what can run on it |
 | POST | `/api/v1/jobs` | `jobs:write` | Submit a scan |
+| POST | `/api/v1/jobs/file` | `jobs:write` | Submit a file (multipart: `file`, `options`, `archive_password`) |
 | GET | `/api/v1/jobs` | `jobs:read` | Team history, filtered and paginated |
 | GET | `/api/v1/jobs/results` | `jobs:read` | The same filters, each job with its plugins' normalised outcomes (bulk pull) |
-| GET | `/api/v1/jobs/{id}` | `jobs:read` | One job with every report |
+| GET | `/api/v1/jobs/{id}` | `jobs:read` | One job with every report. For a file job, `sample` holds the hashes, format, size, entropy and submission trail, and `sample.details.inspection` the static inspection (alpha): `verdict` (`clean` means no static indicator, `suspicious` or `unknown`; never `malicious`), `findings` (severity `info`, `notice`, `warning`, `alert`) and `members` of an archive. It does not affect the job's verdict or score |
 | GET | `/api/v1/jobs/{id}/events` | `jobs:read` | Live progress (server-sent events) |
 | GET | `/api/v1/jobs/{id}/export?format=json\|markdown` | `jobs:export` | Export a report |
 | GET | `/api/v1/jobs/{id}/children` | `jobs:read` | Jobs a pivot derived from this one |
@@ -79,8 +81,7 @@ are embedded. Fetch a raw payload with `/api/v1/jobs/{id}/reports/{plugin}/raw`.
 
 ```bash
 curl -s "https://xenoproxy.example.org/api/v1/jobs/results?created_from=2026-11-01T00:00:00Z&plugin=shodan&plugin_status=SUCCESS&requested_by=<username>&page_size=100" \
-  -H 'Authorization: Bearer <token>' \
-  -H 'X-Requested-With: XMLHttpRequest'
+  -H 'Authorization: Bearer <token>'
 ```
 
 A token only sees what its account can see: jobs at CLEAR or GREEN, plus those shared with
@@ -100,7 +101,8 @@ the API may submit an IP, domain, URL or hash without signing in. Otherwise both
 answer `404`.
 
 - `POST /api/v1/public/submissions` with `{"value": "..."}` returns `201` and the job's
-  public view. Each caller is limited to 10 submissions per hour per client address.
+  public view. Each caller is limited to 10 submissions per hour per client address. To enable it, see
+  [Enabling public submission](help/administrator.md#enabling-public-submission).
 - `GET /api/v1/public/submissions/{id}` returns the same view later, as the analysis
   completes. The random job identifier is the only key.
 
