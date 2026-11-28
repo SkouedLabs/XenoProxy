@@ -70,7 +70,7 @@ private range cannot be used to reach the internal network.
 
 `yara_local` scans a **submitted file** with YARA rules on this instance. Nothing is
 sent anywhere, so it runs up to TLP:RED and does not depend on the "send files to
-providers" setting. One matching rule is Suspicious, three or more distinct rules are
+providers" setting. It runs on uploaded files whatever their type. One matching rule is Suspicious, three or more distinct rules are
 Malicious (option `malicious_rules`), and no match is Unknown, never Clean.
 
 Rules come from two places, both under the `yara_rules` volume (`/app/yara_rules`):

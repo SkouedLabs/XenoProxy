@@ -72,6 +72,9 @@ jobs:
       - name: Frontend image
         run: docker build -t xenoproxy-frontend ./frontend
 
+      - name: Screenshot image
+        run: docker build -t xenoproxy-screenshot ./screenshot
+
   migrations:
     name: Migrations on PostgreSQL
     runs-on: ubuntu-latest

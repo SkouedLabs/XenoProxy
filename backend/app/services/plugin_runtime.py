@@ -16,7 +16,7 @@ Precedence, lowest first:
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy import select
@@ -120,6 +120,19 @@ def resolve_options(
     return options
 
 
+def sample_for_options(sample: SampleAccess | None, options: dict[str, Any]) -> SampleAccess | None:
+    """Withdraw the right to send the file unless this analyzer was told to.
+
+    The instance-wide switch already decided whether `read_bytes` exists. This is
+    the analyzer's own switch, `send_file`, set in its options. An analyzer that
+    does not declare it gets no bytes to send, so the default is always to keep
+    the file in.
+    """
+    if sample is None or sample.read_bytes is None or options.get("send_file") is True:
+        return sample
+    return replace(sample, read_bytes=None)
+
+
 async def build(
     session: AsyncSession,
     name: str,
@@ -172,6 +185,8 @@ async def build(
         runtime_options=runtime_options,
     )
     secrets = await secrets_vault.resolve_secrets(session, name, user_id=user_id)
+
+    sample = sample_for_options(sample, options)
 
     plugin = cls(
         secrets=secrets,

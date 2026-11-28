@@ -184,6 +184,7 @@ class CapaAnalyzer(BaseAnalyzer):
         "read from its import table without executing it."
     )
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     provider = ProviderInfo(
         name="Local static analysis",
         url="https://github.com/",

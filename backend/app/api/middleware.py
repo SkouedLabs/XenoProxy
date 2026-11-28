@@ -22,6 +22,8 @@ from app.core.logging import get_logger, request_id_var
 logger = get_logger(__name__)
 
 _MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# Headroom above a file's own cap for the multipart envelope.
+MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 _IDEMPOTENCY_TTL_SECONDS = 86400
 
 
@@ -58,9 +60,11 @@ class BodyLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         settings = get_settings()
         declared = request.headers.get("content-length")
-        upload_paths = ("/files", "/admin/plugins")
+        # The routes that take a file. The limit is the file's own cap plus room
+        # for the multipart envelope (boundaries, field names, the options JSON).
+        upload_paths = ("/jobs/file", "/admin/plugin-packages")
         limit = (
-            settings.max_upload_bytes
+            settings.max_upload_bytes + MULTIPART_OVERHEAD_BYTES
             if request.url.path.endswith(upload_paths)
             else settings.max_body_bytes
         )

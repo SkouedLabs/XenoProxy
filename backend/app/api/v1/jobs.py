@@ -289,6 +289,7 @@ async def create_file_job(
     job_request = await orchestrator.resolve_selection(
         session,
         raw_observable=observable_hash,
+        has_sample=True,
         analyzers=choices.analyzers,
         connectors=choices.connectors,
         pivots=choices.pivots,
@@ -892,6 +893,7 @@ async def rerun_job(
         tlp=source.tlp,
         scan_mode=ScanMode.FORCE_NEW,
         runtime_configuration=dict(source.runtime_configuration or {}),
+        has_sample=bool(source.file_path),
     )
     job = await orchestrator.create_job(
         session,

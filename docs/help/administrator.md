@@ -359,8 +359,17 @@ nothing leaves the instance, so it runs at every TLP level. It is shown on the j
 in `sample.details.inspection` of the API. It never changes a verdict or a score. See the
 analyst help for what it looks for and what it cannot tell.
 
-Uploads are limited to 32 MiB (`BACKEND_MAX_UPLOAD_BYTES`). Archives are read in memory, one
-level deep, with caps on the number and size of their members.
+Uploads are limited to 32 MiB (`BACKEND_MAX_UPLOAD_BYTES`), and the reverse proxy accepts
+34 MiB so the multipart envelope fits. Other routes keep the 2 MiB body limit. Archives are
+read in memory, one level deep, with caps on the number and size of their members.
+
+The local analyzers (`yara_local`, `file_info`, `strings_info`, `doc_info`, `apk_info`,
+`capa_info`) run on every uploaded file, whatever the file's type. Nothing leaves the
+instance for them.
+
+Joe Sandbox is the only analyzer that sends a file out, and only when both switches are on:
+**Settings, Scanning, Allow a submitted file to be sent to a provider**, and the analyzer's
+own `send_file` option in its configuration. Either one off keeps the file in.
 
 ## Outbound proxies
 

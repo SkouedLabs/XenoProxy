@@ -103,6 +103,7 @@ class FileInfoAnalyzer(BaseAnalyzer):
         "Format, hashes and entropy of a submitted file, with PE, PDF and metadata structure."
     )
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     provider = ProviderInfo(
         name="Local static analysis",
         url="https://github.com/",

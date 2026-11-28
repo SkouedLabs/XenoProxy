@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import ipaddress
+from typing import ClassVar
 
 import dns.asyncresolver
 import dns.exception
@@ -27,6 +28,10 @@ class BaseAnalyzer(BasePlugin):
     """
 
     plugin_type = PluginType.ANALYZER
+    # Set by an analyzer that reads the submitted file on this instance and sends
+    # it nowhere. Only such an analyzer runs on a file job, whose observable is the
+    # file's hash: a sandbox that accepts files is not one of them.
+    reads_local_sample: ClassVar[bool] = False
 
     @abc.abstractmethod
     async def run(self, observable: Observable) -> PluginResult:

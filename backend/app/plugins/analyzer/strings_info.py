@@ -124,6 +124,7 @@ class StringsInfoAnalyzer(BaseAnalyzer):
         "Readable strings of a submitted file, and the injection and download APIs in them."
     )
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     options_schema: ClassVar[dict[str, Any]] = {
         "min_length": {
             "type": "integer",

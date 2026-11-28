@@ -106,6 +106,7 @@ class DocInfoAnalyzer(BaseAnalyzer):
     label = "Doc_Info (oletools)"
     description = "Macros in a submitted Office document, and what they do, analysed locally."
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     options_schema: ClassVar[dict[str, Any]] = {
         "malicious_keywords": {
             "type": "integer",

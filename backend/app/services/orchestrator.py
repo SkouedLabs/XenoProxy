@@ -149,11 +149,17 @@ async def candidate_plugins(
     plugin_type: PluginKind,
     observable_type: ObservableType,
     job_tlp: Tlp,
+    has_sample: bool = False,
 ) -> tuple[list[str], list[SkippedPlugin]]:
     """Split every plugin of one type into runnable and skipped.
 
     This is the single place that decides whether a plugin can run, so the scan
     page, the API preview and job creation never disagree.
+
+    A job that carries a submitted file has a hash as its observable, so the
+    analyzers that read the file on this instance are offered too. Only those:
+    a plugin that could send the file elsewhere is decided at run time, by its
+    own `send_file` option.
     """
     load_all()
     configs = await plugin_configs.list_all(session)
@@ -163,7 +169,8 @@ async def candidate_plugins(
     skipped: list[SkippedPlugin] = []
 
     for cls in iter_plugins(plugin_type):
-        if not cls.supports(observable_type):
+        local_on_file = has_sample and cls.reads_local_sample
+        if not (cls.supports(observable_type) or local_on_file):
             skipped.append(
                 SkippedPlugin(
                     cls.name,
@@ -204,6 +211,7 @@ async def candidate_analyzers(
     *,
     observable_type: ObservableType,
     job_tlp: Tlp,
+    has_sample: bool = False,
 ) -> tuple[list[str], list[SkippedPlugin]]:
     """Analyzer-only view of `candidate_plugins`, used by the scan preview."""
     return await candidate_plugins(
@@ -211,6 +219,7 @@ async def candidate_analyzers(
         plugin_type=PluginKind.ANALYZER,
         observable_type=observable_type,
         job_tlp=job_tlp,
+        has_sample=has_sample,
     )
 
 
@@ -265,6 +274,7 @@ async def resolve_selection(
     parent_job_id: uuid.UUID | None = None,
     pivot_name: str | None = None,
     depth: int = 0,
+    has_sample: bool = False,
 ) -> JobRequest:
     """Classify the observable and resolve which plugins will actually run.
 
@@ -312,7 +322,11 @@ async def resolve_selection(
 
     for kind in PluginKind:
         runnable, skipped = await candidate_plugins(
-            session, plugin_type=kind, observable_type=observable.type, job_tlp=effective_tlp
+            session,
+            plugin_type=kind,
+            observable_type=observable.type,
+            job_tlp=effective_tlp,
+            has_sample=has_sample,
         )
         runnable_set = set(runnable)
         skipped_by_name = {entry.name: entry for entry in skipped}

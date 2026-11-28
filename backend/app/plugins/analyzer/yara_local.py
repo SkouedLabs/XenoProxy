@@ -52,6 +52,7 @@ class YaraLocalAnalyzer(BaseAnalyzer):
         "Scans the submitted file with your own and pulled YARA rulesets, on this instance."
     )
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     options_schema: ClassVar[dict[str, Any]] = {
         "malicious_rules": {
             "type": "integer",

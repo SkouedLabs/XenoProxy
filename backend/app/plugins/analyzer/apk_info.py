@@ -136,6 +136,7 @@ class ApkInfoAnalyzer(BaseAnalyzer):
         "with Androguard. The package is never installed or run."
     )
     supported_types: ClassVar[tuple[ObservableType, ...]] = (ObservableType.FILE,)
+    reads_local_sample: ClassVar[bool] = True
     provider = ProviderInfo(
         name="Local Androguard",
         url="https://github.com/androguard/androguard",

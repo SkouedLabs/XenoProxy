@@ -180,7 +180,8 @@ SPECS: tuple[SettingSpec, ...] = (
             "A source that would submit the file itself — a sandbox — is refused rather than "
             "silently downgraded, so an analyst is told the detonation did not happen. "
             "Turn it on only where sending a potentially confidential file to a third party "
-            "is acceptable."
+            "is acceptable. Each analyzer that submits files also needs its own "
+            "'send_file' option."
         ),
         type="boolean",
         # The safe default for the kind of organisation that runs this: a file

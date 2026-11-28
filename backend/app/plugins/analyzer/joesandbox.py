@@ -104,8 +104,8 @@ class BaseJoeSandbox(BaseAnalyzer):
         # conclusion from a scan that never ran.
         if self.sample is not None and not self.sample.may_leave:
             return self.failed(
-                "This instance does not send submitted files to providers, so the sample was "
-                "not detonated. An administrator can allow it in Settings, Scanning."
+                "The sample was not sent, so it was not detonated. Sending a file needs both "
+                "the instance setting (Settings, Scanning) and this analyzer's 'send_file' option."
             )
 
         payload = self.sample_bytes()
@@ -253,6 +253,11 @@ class JoeSandboxCloudAnalyzer(BaseJoeSandbox):
     label = "Joe Sandbox Cloud Basic"
     description = "Behavioural verdicts from the free Joe Sandbox cloud. Submissions are published."
     options_schema: ClassVar[dict[str, Any]] = {
+        "send_file": {
+            "type": "boolean",
+            "default": False,
+            "label": "Send a submitted file to Joe Sandbox (also needs the instance setting)",
+        },
         "submit_new_analysis": {
             "type": "boolean",
             "default": False,
@@ -297,6 +302,11 @@ class JoeSandboxEnterpriseAnalyzer(BaseJoeSandbox):
         "Behavioural verdicts from your own Joe Sandbox appliance. Submissions stay private."
     )
     options_schema: ClassVar[dict[str, Any]] = {
+        "send_file": {
+            "type": "boolean",
+            "default": False,
+            "label": "Send a submitted file to Joe Sandbox (also needs the instance setting)",
+        },
         "base_url": {
             "type": "string",
             "default": "",
