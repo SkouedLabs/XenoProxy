@@ -27,7 +27,7 @@ def _ok(request):
 
 @pytest.fixture
 def client(monkeypatch):
-    settings = SimpleNamespace(max_body_bytes=2 * MIB, max_upload_bytes=32 * MIB)
+    settings = SimpleNamespace(max_body_bytes=2 * MIB, max_upload_bytes=20 * MIB)
     monkeypatch.setattr(middleware, "get_settings", lambda: settings)
     app = Starlette(
         routes=[
@@ -48,7 +48,7 @@ def test_a_file_bigger_than_the_ordinary_limit_is_accepted_on_upload_routes(clie
 
 @pytest.mark.parametrize("path", ["/api/v1/jobs/file", "/api/v1/admin/plugin-packages"])
 def test_an_upload_past_its_own_cap_is_refused(client, path) -> None:
-    response = client.post(path, content=b"x" * (32 * MIB + 2 * MIB))
+    response = client.post(path, content=b"x" * (20 * MIB + 2 * MIB))
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "BODY_TOO_LARGE"
 

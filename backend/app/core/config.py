@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     # Lets anyone, without an account, submit an observable for the public
     # playbook. Off unless the deployment asks for it: every such submission
     # spends the instance's API quotas and is shared with the sources at TLP:CLEAR.
-    public_submission_enabled: bool = False
 
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12
@@ -122,7 +121,7 @@ class Settings(BaseSettings):
 
     cors_origins: str = ""
     max_body_bytes: int = 2097152
-    max_upload_bytes: int = 33554432
+    max_upload_bytes: int = 20 * 1024 * 1024
     max_page_size: int = 100
 
     @field_validator("public_url")

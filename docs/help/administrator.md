@@ -267,30 +267,22 @@ Public mode lets anyone who can reach the API submit an IP, domain, URL or hash 
 account**. It is meant for a landing page or a "check this link" form. It is off by default,
 and while it is off both public routes answer `404`, as if they did not exist.
 
-It is an environment setting on purpose: nothing in the interface or the API can turn it on,
-so a compromised account cannot expose the instance.
+It is a switch in the interface, so it can be turned on and off without restarting the stack.
+Only an administrator can change it, and every change is written to the audit log.
 
-1. Create or edit the `.env` file beside `docker-compose.yml`:
+1. Open **Settings**, section **Security**, and turn on **Public submission (no account)**.
+   It takes effect immediately.
 
-   ```bash
-   XENOPROXY_PUBLIC_SUBMISSION=true
-   ```
-
-2. Recreate the API container so it reads the value:
+2. Check it. A request without a token must now return `201` instead of `404`:
 
    ```bash
-   docker compose up -d api
+   curl -s -X POST https://xenoproxy.example.org/api/v1/public/submissions      -H 'Content-Type: application/json' -d '{"value": "example.com"}'
    ```
 
-3. Check it. A request without a token must now return `201` instead of `404`:
+To switch it off, turn the same switch off. Jobs already created stay in the history.
 
-   ```bash
-   curl -s -X POST https://xenoproxy.example.org/api/v1/public/submissions \
-     -H 'Content-Type: application/json' -d '{"value": "example.com"}'
-   ```
-
-To switch it off, remove the line (or set it to `false`) and run `docker compose up -d api`
-again. Jobs already created stay in the history.
+> The old `XENOPROXY_PUBLIC_SUBMISSION` environment variable is no longer read. A deployment
+> that relied on it must turn the switch on once in Settings.
 
 ### What a public caller gets
 
@@ -359,8 +351,8 @@ nothing leaves the instance, so it runs at every TLP level. It is shown on the j
 in `sample.details.inspection` of the API. It never changes a verdict or a score. See the
 analyst help for what it looks for and what it cannot tell.
 
-Uploads are limited to 32 MiB (`BACKEND_MAX_UPLOAD_BYTES`), and the reverse proxy accepts
-34 MiB so the multipart envelope fits. Other routes keep the 2 MiB body limit. Archives are
+Uploads are limited to 20 MiB by default (`BACKEND_MAX_UPLOAD_BYTES`), and the reverse proxy
+accepts 22 MiB so the multipart envelope fits. Raise both together to accept larger files. Other routes keep the 2 MiB body limit. Archives are
 read in memory, one level deep, with caps on the number and size of their members.
 
 The local analyzers (`yara_local`, `file_info`, `strings_info`, `doc_info`, `apk_info`,

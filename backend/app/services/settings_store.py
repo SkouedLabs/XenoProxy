@@ -173,6 +173,20 @@ SPECS: tuple[SettingSpec, ...] = (
         section="scanning",
     ),
     SettingSpec(
+        key="public_submission",
+        label="Public submission (no account)",
+        help_text=(
+            "On, anyone who can reach the API may submit an IP, domain, URL or hash without "
+            "an account. Every such job runs the Public submission playbook at TLP:CLEAR, so "
+            "its observable is shared with the sources in that playbook and spends your API "
+            "quotas. Limited to 10 submissions per hour per client address. Takes effect "
+            "immediately."
+        ),
+        type="boolean",
+        default=False,
+        section="security",
+    ),
+    SettingSpec(
         key="send_files_to_providers",
         label="Allow a submitted file to be sent to a provider",
         help_text=(

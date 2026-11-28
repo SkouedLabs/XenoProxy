@@ -96,7 +96,7 @@ host that answered on port 8443" — without re-running a single source.
 
 ## Public submission (optional, no account)
 
-When the deployment sets `BACKEND_PUBLIC_SUBMISSION_ENABLED=true`, anyone who can reach
+When an administrator turns on **Public submission** in Settings, Security, anyone who can reach
 the API may submit an IP, domain, URL or hash without signing in. Otherwise both routes
 answer `404`.
 

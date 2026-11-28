@@ -105,7 +105,7 @@ first answer instead of creating a second job. Use a fresh key for each new anal
 curl -s -X POST "$HOST/api/v1/jobs/file"   -H "Authorization: Bearer $TOKEN"   -F file=@sample.zip   -F archive_password=infected   -F 'options={"tlp": "RED", "tags": ["incident-42"]}'
 ```
 
-The form carries `file` (up to 32 MiB), `options` (the same JSON as above, optional) and
+The form carries `file` (up to 20 MiB by default), `options` (the same JSON as above, optional) and
 `archive_password` (optional). The file's SHA-256 becomes the observable, and the job's
 `sample` holds the hashes and the static inspection. The file is never sent to a provider
 unless an administrator allowed it.

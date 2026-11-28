@@ -83,7 +83,7 @@ it up [separately from the database](operations.md#backups).
 |---|---|---|
 | `BACKEND_ANALYZER_DEFAULT_TIMEOUT_SECONDS` | `60` | Default provider timeout |
 | `BACKEND_MAX_BODY_BYTES` | `2097152` | Maximum request body |
-| `BACKEND_MAX_UPLOAD_BYTES` | `33554432` | Maximum upload |
+| `BACKEND_MAX_UPLOAD_BYTES` | `20971520` | Maximum upload (20 MiB) |
 | `BACKEND_MAX_PAGE_SIZE` | `100` | Maximum page size |
 | `BACKEND_CORS_ORIGINS` | — | Extra browser origins, comma separated |
 

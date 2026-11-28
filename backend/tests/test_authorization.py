@@ -29,7 +29,7 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/logout"): "clearing a cookie must work for an expired session",
     ("GET", "/api/v1/auth/oidc/start"): "starting single sign-on, before any identity exists",
     ("GET", "/api/v1/auth/oidc/callback"): "the provider redirect that creates the session",
-    # Deliberate exception, reachable only when BACKEND_PUBLIC_SUBMISSION_ENABLED is set.
+    # Deliberate exception, reachable only when the Public submission setting is on.
     # It runs a fixed playbook at TLP:CLEAR and returns a reduced view; see test_public_submission.
     (
         "POST",

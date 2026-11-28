@@ -5,14 +5,18 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+import pytest
+
+from app.api.v1 import public as public_module
 from app.api.v1.public import PUBLIC_PLAYBOOK, _public_view
-from app.core.config import Settings
+from app.core.errors import NotFoundError
 from app.models.job import JobOrigin, JobStatus, PluginKind, ReportStatus, Verdict
 from app.services.bootstrap import BUILTIN_PLAYBOOKS
+from app.services.settings_store import BY_KEY
 
 
 def test_public_submission_is_off_by_default() -> None:
-    assert Settings.model_fields["public_submission_enabled"].default is False
+    assert BY_KEY["public_submission"].default is False
 
 
 def test_the_public_playbook_only_uses_observables_and_lookups() -> None:
@@ -76,3 +80,22 @@ def test_the_result_view_leaves_out_everything_internal() -> None:
     ]
     assert "do not leak" not in str(view)
     assert "requested_by_name" not in view
+
+
+@pytest.mark.asyncio
+async def test_the_routes_answer_not_found_while_the_switch_is_off(monkeypatch) -> None:
+    async def off(_session, _key):
+        return False
+
+    monkeypatch.setattr(public_module.settings_store, "get", off)
+    with pytest.raises(NotFoundError):
+        await public_module._require_enabled(None)
+
+
+@pytest.mark.asyncio
+async def test_the_routes_open_when_the_switch_is_on(monkeypatch) -> None:
+    async def on(_session, _key):
+        return True
+
+    monkeypatch.setattr(public_module.settings_store, "get", on)
+    await public_module._require_enabled(None)

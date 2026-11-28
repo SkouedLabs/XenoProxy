@@ -1,6 +1,6 @@
 """Public submission: an observable sent without an account.
 
-Off unless the deployment sets BACKEND_PUBLIC_SUBMISSION_ENABLED. The route ignores
+Off until an administrator turns it on in Settings, Security. The route ignores
 every selection a client could send and always runs the "Public submission"
 playbook at TLP:CLEAR, so an anonymous caller cannot choose internal sources,
 connectors (which publish outside the instance) or pivots. Jobs are stored with
@@ -16,19 +16,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, client_ip
-from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationFailedError
 from app.models.job import Job, JobOrigin, PluginKind, Tlp
 from app.schemas.public import PublicSourceOut, PublicSubmissionIn, PublicSubmissionOut
-from app.services import audit, orchestrator
+from app.services import audit, orchestrator, settings_store
 
 router = APIRouter(prefix="/public", tags=["public"])
 
 PUBLIC_PLAYBOOK = "Public submission"
 
 
-def _require_enabled() -> None:
-    if not get_settings().public_submission_enabled:
+async def _require_enabled(session: DbSession) -> None:
+    if not await settings_store.get(session, "public_submission"):
         # Reported as missing, so a disabled deployment does not advertise the route.
         raise NotFoundError("The public submission service is not enabled.")
 
@@ -63,7 +62,7 @@ def _public_view(job: Job) -> PublicSubmissionOut:
 async def submit(
     payload: PublicSubmissionIn, request: Request, session: DbSession
 ) -> PublicSubmissionOut:
-    _require_enabled()
+    await _require_enabled(session)
     job_request = await orchestrator.resolve_selection(
         session,
         raw_observable=payload.value,
@@ -113,7 +112,7 @@ async def submit(
 )
 async def read_submission(job_id: uuid.UUID, session: DbSession) -> PublicSubmissionOut:
     """The identifier returned by the submission is the only key: it is a random UUID."""
-    _require_enabled()
+    await _require_enabled(session)
     job = (
         await session.execute(
             select(Job)

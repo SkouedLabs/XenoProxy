@@ -66,7 +66,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
     title: 'Public submission (administrators)',
     body: [
       'Public mode lets anyone who can reach the API submit an IP, domain, URL or hash without an account, through POST /api/v1/public/submissions with {"value": "..."}. Read the result back with GET /api/v1/public/submissions/{id}. While it is off both routes answer 404.',
-      'It can only be turned on from the environment: set XENOPROXY_PUBLIC_SUBMISSION=true in the .env file beside docker-compose.yml, then run docker compose up -d api. Remove it to turn it off.',
+      'Turn it on or off in Settings, Security, with the Public submission switch. It takes effect immediately, no restart needed, and the change is audited.',
       'Public jobs always use the Public submission playbook at TLP:CLEAR, are limited to 10 per hour per client address, and spend your own source quotas. Trim that playbook in Admin, Playbooks, and set BACKEND_TRUSTED_PROXY_COUNT behind a reverse proxy. Public jobs show in the history with the origin public.',
     ],
   },
