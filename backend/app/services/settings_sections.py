@@ -268,7 +268,7 @@ class NotificationsSettings(BaseModel):
 
     A notification goes out for a finished job whose verdict reaches the floor,
     which is what keeps a quiet instance quiet. The webhook is signed the way
-    the n8n connector signs its payload, so a receiver can verify it came from
+    every outbound webhook is signed, so a receiver can verify it came from
     here.
     """
 

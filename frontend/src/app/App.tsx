@@ -10,6 +10,7 @@ import { InstanceSettingsPage } from '@/features/admin/settings/SettingsPage';
 import { AssistantPage } from '@/features/assistant/AssistantPage';
 import { AuditPage } from '@/features/admin/pages/AuditPage';
 import { PlaybooksPage } from '@/features/admin/pages/PlaybooksPage';
+import { YaraRulesPage } from '@/features/admin/pages/YaraRulesPage';
 import { PluginPackagesPage } from '@/features/admin/pages/PluginPackagesPage';
 import { UsersPage } from '@/features/admin/pages/UsersPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
@@ -112,6 +113,14 @@ function AuthenticatedRoutes() {
           element={
             <RequirePermission permission="plugins:manage">
               <PluginPackagesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/admin/yara"
+          element={
+            <RequirePermission permission="plugins:manage">
+              <YaraRulesPage />
             </RequirePermission>
           }
         />

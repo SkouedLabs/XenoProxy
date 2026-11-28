@@ -50,6 +50,8 @@ from app.schemas.jobs import (
 from app.services import (
     archives,
     audit,
+    detection_graph,
+    graph_export,
     job_control,
     orchestrator,
     recap,
@@ -605,6 +607,30 @@ async def get_recap(job_id: uuid.UUID, session: DbSession, user: AnalystUser) ->
 
 
 @router.get(
+    "/{job_id}/graph/export",
+    summary="Relation graph as nodes and relationships for a graph database (alpha)",
+)
+async def export_graph(job_id: uuid.UUID, session: DbSession, user: AnalystUser) -> dict[str, Any]:
+    """Same stored data as the recap; no provider is called."""
+    root = await _load_job(session, job_id, user)
+    jobs = await _investigation(session, root, user)
+    return graph_export.to_property_graph(recap.build_recap(root, jobs)["graph"])
+
+
+@router.get(
+    "/{job_id}/detection-graph",
+    summary="What each source found, and the chain of pivots and lookups that led to it (alpha)",
+)
+async def get_detection_graph(
+    job_id: uuid.UUID, session: DbSession, user: AnalystUser
+) -> dict[str, Any]:
+    """Same stored data as the recap; no provider is called."""
+    root = await _load_job(session, job_id, user)
+    jobs = await _investigation(session, root, user)
+    return detection_graph.build(root, jobs)
+
+
+@router.get(
     "/{job_id}/reports/{plugin_name}",
     response_model=PluginReportDetail,
     summary="Read the raw provider output of one plugin",
@@ -1027,9 +1053,7 @@ async def report_screenshot(
     job = await _load_job(session, job_id, user)
     report = (
         await session.execute(
-            select(PluginReport).where(
-                PluginReport.id == report_id, PluginReport.job_id == job.id
-            )
+            select(PluginReport).where(PluginReport.id == report_id, PluginReport.job_id == job.id)
         )
     ).scalar_one_or_none()
     if report is None:

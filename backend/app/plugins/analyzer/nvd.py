@@ -69,9 +69,9 @@ class NvdAnalyzer(BaseAnalyzer):
         ),
         notes="Takes a CVE identifier pasted as a generic observable, such as CVE-2021-44228.",
     )
-    # Asking NIST about a CVE reveals nothing about the investigation: the
-    # identifier is public and the lookup says nothing about who is affected.
-    max_tlp = Tlp.RED
+    # The identifier is public, but asking NIST still tells a third party which
+    # CVE this deployment is looking at, and TLP:RED means no external source.
+    max_tlp = Tlp.AMBER
     free_tier = True
     default_timeout = 30
     # The record changes when the analysis is revised, which is rare.

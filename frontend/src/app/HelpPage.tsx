@@ -44,7 +44,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ],
   },
   {
-    title: 'Calling XenoProxy from a script or n8n',
+    title: 'Calling XenoProxy from a script or an automation tool',
     body: [
       'Create a personal token in My access and send it as an Authorization: Bearer header. The token carries your own permissions.',
       'POST /api/v1/jobs with an observable and either analyzers or a playbook, then poll GET /api/v1/jobs/{id} until the status is terminal.',

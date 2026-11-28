@@ -20,6 +20,8 @@ class ObservableType(StrEnum):
     URL = "url"
     HASH = "hash"
     FILE = "file"
+    PHONE = "phone"
+    CRYPTO = "crypto"
     GENERIC = "generic"
 
 

@@ -59,6 +59,15 @@ _DOMAIN_RE = re.compile(
 )
 _EMAIL_RE = re.compile(r"^[^@\s]{1,64}@(?=.{1,253}$)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$")
 _ASN_RE = re.compile(r"^as\d{1,10}$")
+# International format only: a leading "+" and 8 to 15 digits (E.164 length limit).
+# Separators are dropped before the match, so "+33 6 12-34.56.78" is accepted.
+_PHONE_RE = re.compile(r"^\+\d{8,15}$")
+# Ethereum: 0x and 40 hex digits. Bitcoin legacy: base58, no 0, O, I or l. Bitcoin
+# bech32: lowercase only. Structure alone; a matching string is not proof of an address.
+_ETH_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_BTC_LEGACY_RE = re.compile(r"^[13][1-9A-HJ-NP-Za-km-z]{25,34}$")
+_BTC_BECH32_RE = re.compile(r"^bc1[02-9ac-hj-np-z]{11,71}$")
+_PHONE_SEPARATORS = re.compile(r"[\s().\-]")
 
 
 @dataclass(frozen=True)
@@ -128,6 +137,24 @@ def _classify_domain(value: str) -> Observable | None:
     return None
 
 
+def _classify_phone(value: str) -> Observable | None:
+    candidate = _PHONE_SEPARATORS.sub("", value)
+    if _PHONE_RE.match(candidate):
+        return Observable(value=candidate, type=ObservableType.PHONE)
+    return None
+
+
+def _classify_crypto(value: str) -> Observable | None:
+    if _ETH_RE.match(value):
+        return Observable(value=value.lower(), type=ObservableType.CRYPTO)
+    if _BTC_LEGACY_RE.match(value):
+        return Observable(value=value, type=ObservableType.CRYPTO)
+    lowered = value.lower()
+    if _BTC_BECH32_RE.match(lowered):
+        return Observable(value=lowered, type=ObservableType.CRYPTO)
+    return None
+
+
 def classify(raw: str) -> Observable:
     """Classify a raw user input into a typed observable.
 
@@ -145,7 +172,14 @@ def classify(raw: str) -> Observable:
     if any(ord(char) < 32 for char in value):
         raise ValidationFailedError("The observable contains control characters.")
 
-    for classifier in (_classify_ip, _classify_hash, _classify_url, _classify_domain):
+    for classifier in (
+        _classify_ip,
+        _classify_hash,
+        _classify_url,
+        _classify_domain,
+        _classify_phone,
+        _classify_crypto,
+    ):
         observable = classifier(value)
         if observable is not None:
             return observable

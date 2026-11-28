@@ -28,6 +28,7 @@ from typing import Any, ClassVar
 
 from app.core.logging import get_logger
 from app.models.job import ObservableType, PluginKind, ReportStatus, Tlp, Verdict
+from app.services import tlp as tlp_policy
 from app.services.observables import Observable
 
 logger = get_logger(__name__)
@@ -140,6 +141,9 @@ class SampleAccess:
     file_name: str = ""
     # Set only when the instance allows a file to be sent out.
     read_bytes: Callable[[], bytes | None] | None = None
+    # For analysis that happens on this instance and sends nothing anywhere.
+    # Always set when a file was submitted, whatever `read_bytes` allows.
+    read_local: Callable[[], bytes | None] | None = None
 
     @property
     def may_leave(self) -> bool:
@@ -310,9 +314,16 @@ class BasePlugin(abc.ABC):
     # a third party caps at AMBER; a source that publishes or indexes the query
     # caps at CLEAR; a purely local plugin may go up to RED.
     max_tlp: ClassVar[Tlp] = Tlp.AMBER
+    # A higher cap an administrator may switch on with the `trusted_internal`
+    # option, for a plugin whose destination is one they run. It is honoured only
+    # while the destination resolves to a private network (see below).
+    trusted_internal_max_tlp: ClassVar[Tlp | None] = None
     # Set by the custom-plugin loader on plugins that come from the plugins volume.
     is_custom: ClassVar[bool] = False
     plugin_version: ClassVar[str] = ""
+    # "stable" by default. "alpha" marks a module whose provider contract is
+    # only verified against mocks: the UI shows it, and the verdict says so.
+    maturity: ClassVar[str] = "stable"
 
     def __init__(
         self,
@@ -344,6 +355,16 @@ class BasePlugin(abc.ABC):
         if self._sample is None or self._sample.read_bytes is None:
             return None
         return self._sample.read_bytes()
+
+    def local_sample_bytes(self) -> bytes | None:
+        """The submitted file, for an analyzer that never sends it anywhere.
+
+        Unlike `sample_bytes`, this does not depend on the instance allowing
+        files to be sent to providers: a local scan discloses nothing.
+        """
+        if self._sample is None or self._sample.read_local is None:
+            return None
+        return self._sample.read_local()
 
     @property
     def sample(self) -> SampleAccess | None:
@@ -387,6 +408,15 @@ class BasePlugin(abc.ABC):
 
     def option(self, name: str, default: Any = None) -> Any:
         return self.options.get(name, default)
+
+    async def internal_only_refusal(self, url: str) -> str | None:
+        """At TLP:RED, refuse a destination that is not on a private network."""
+        if self.job_tlp is not Tlp.RED or await tlp_policy.endpoint_is_internal(url):
+            return None
+        return (
+            "not allowed at TLP:RED: the destination is not on a private network, "
+            "and a RED job never leaves the deployment"
+        )
 
     # -- execution -----------------------------------------------------------
 

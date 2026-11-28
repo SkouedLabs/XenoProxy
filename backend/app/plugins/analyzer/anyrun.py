@@ -92,17 +92,13 @@ class AnyRunAnalyzer(BaseAnalyzer):
         if response.status_code == 429:
             raise PluginQuotaError("ANY.RUN returned HTTP 429.")
         if response.status_code in (401, 403):
-            raise PluginQuotaError(
-                "ANY.RUN rejected the key, or the plan does not expose the API."
-            )
+            raise PluginQuotaError("ANY.RUN rejected the key, or the plan does not expose the API.")
         if not response.ok:
             return self.provider_http_error(response.status_code)
 
         raw: dict[str, Any] = response.json_body or {}
         tasks = [
-            entry
-            for entry in (raw.get("data") or {}).get("tasks") or []
-            if isinstance(entry, dict)
+            entry for entry in (raw.get("data") or {}).get("tasks") or [] if isinstance(entry, dict)
         ]
         if not tasks:
             return self.not_found("ANY.RUN has no public run for this sample.")
@@ -110,9 +106,7 @@ class AnyRunAnalyzer(BaseAnalyzer):
         worst = Verdict.UNKNOWN
         names: list[str] = []
         for task in tasks:
-            verdict_text = str(
-                task.get("verdict") or task.get("threatLevelText") or ""
-            ).lower()
+            verdict_text = str(task.get("verdict") or task.get("threatLevelText") or "").lower()
             mapped = _VERDICT.get(verdict_text, Verdict.UNKNOWN)
             if mapped is Verdict.MALICIOUS:
                 worst = Verdict.MALICIOUS

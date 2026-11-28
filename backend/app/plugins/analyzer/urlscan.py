@@ -131,9 +131,7 @@ class UrlScanAnalyzer(BaseAnalyzer):
             hostnames=sorted(
                 {str(item.get("page", {}).get("domain")) for item in results if item.get("page")}
             ),
-            technologies=[
-                entry for entry in [technologies.clean(page.get("server"))] if entry
-            ],
+            technologies=[entry for entry in [technologies.clean(page.get("server"))] if entry],
             headline=f"{len(results)} indexed scan(s); latest from {latest_time}.",
             screenshot_url=str(latest.get("screenshot") or "") or None,
             links=[

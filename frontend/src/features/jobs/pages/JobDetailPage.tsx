@@ -12,6 +12,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowLeft,
   CircleStop,
   Database,
   Download,
@@ -44,10 +45,11 @@ import {
 } from '@/components/ui/verdict';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
-import { formatDateTime, formatDuration, formatRelative } from '@/lib/format';
-import type { Detection, JobDetail, PluginReport, PluginType } from '@/lib/types';
+import { formatDuration, formatRelative } from '@/lib/format';
+import type { Detection, JobDetail, ObservableType, PluginReport, PluginType } from '@/lib/types';
 import { jobsApi } from '../api';
 import { Author } from '../components/Author';
+import { DetectionGraph } from '../components/DetectionGraph';
 
 const TERMINAL = new Set(['SUCCESS', 'PARTIAL_FAILURE', 'FAILED', 'KILLED']);
 
@@ -78,17 +80,41 @@ const PHASE_ICON: Record<PluginType, typeof Send> = {
   pivot: GitBranch,
 };
 
+type FactKey = 'ports' | 'cves' | 'countries' | 'networks' | 'organisations' | 'hostnames';
+
+/**
+ * Which facts mean something for which kind of observable. A file hash has no open
+ * ports, no network and no geolocation, so those rows would only ever read "—";
+ * what matters for it is how many engines flagged it, shown below as detection ratios.
+ */
+const FACTS_BY_TYPE: Record<ObservableType, FactKey[]> = {
+  ip: ['ports', 'cves', 'countries', 'networks', 'organisations', 'hostnames'],
+  domain: ['hostnames', 'networks', 'countries', 'organisations', 'ports', 'cves'],
+  url: ['hostnames', 'networks', 'countries', 'organisations'],
+  hash: [],
+  file: [],
+  phone: ['countries', 'organisations'],
+  crypto: [],
+  generic: [],
+};
+
 function SummaryFacts({ job }: { job: JobDetail }) {
   const summary = job.summary ?? {};
-  const facts: { label: string; value: string }[] = [
-    { label: 'Open ports', value: (summary.open_ports ?? []).join(', ') || '—' },
-    { label: 'Known CVEs', value: (summary.cves ?? []).join(', ') || '—' },
-    { label: 'Geolocation', value: (summary.countries ?? []).join(', ') || '—' },
-    { label: 'Networks', value: (summary.asns ?? []).join(', ') || '—' },
-    { label: 'Organisations', value: (summary.organisations ?? []).join(', ') || '—' },
-    { label: 'Hostnames', value: (summary.hostnames ?? []).slice(0, 8).join(', ') || '—' },
-  ];
+  const values: Record<FactKey, { label: string; value: string }> = {
+    ports: { label: 'Open ports', value: (summary.open_ports ?? []).join(', ') },
+    cves: { label: 'Known CVEs', value: (summary.cves ?? []).join(', ') },
+    countries: { label: 'Geolocation', value: (summary.countries ?? []).join(', ') },
+    networks: { label: 'Networks', value: (summary.asns ?? []).join(', ') },
+    organisations: { label: 'Organisations', value: (summary.organisations ?? []).join(', ') },
+    hostnames: { label: 'Hostnames', value: (summary.hostnames ?? []).slice(0, 8).join(', ') },
+  };
+  // A row with nothing to say is left out rather than shown as an empty dash.
+  const facts = FACTS_BY_TYPE[job.observable_type]
+    .map((key) => values[key])
+    .filter((fact) => fact.value);
   const ratios = Object.entries(summary.detection_ratios ?? {});
+
+  if (facts.length === 0 && ratios.length === 0) return null;
 
   return (
     <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -209,7 +235,9 @@ function PivotOutcome({ report }: { report: PluginReport }) {
       <ul className="space-y-1">
         {derived.map((entry, index) => (
           <li key={entry.value} className="flex flex-wrap items-center gap-2 text-sm">
-            <code className="rounded-md border border-border bg-surface-sunken px-2 py-0.5 font-mono text-xs">{entry.value}</code>
+            <code className="rounded-md border border-border bg-surface-sunken px-2 py-0.5 font-mono text-xs">
+              {entry.value}
+            </code>
             {entry.reason ? <span className="text-xs text-muted">{entry.reason}</span> : null}
             {spawned[index] ? (
               <Link
@@ -227,8 +255,8 @@ function PivotOutcome({ report }: { report: PluginReport }) {
       </ul>
       {spawned.length === 0 ? (
         <p className="text-xs text-muted">
-          No child job was created: pivoting may be turned off for this instance, or the depth
-          limit was already reached.
+          No child job was created: pivoting may be turned off for this instance, or the depth limit
+          was already reached.
         </p>
       ) : null}
     </div>
@@ -259,9 +287,7 @@ function ReportPanel({ jobId, report }: { jobId: string; report: PluginReport })
         <div className="flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-soft p-3.5">
           <ServerCrash className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden />
           <div>
-            <p className="text-sm font-medium text-danger">
-              This {report.plugin_type} failed.
-            </p>
+            <p className="text-sm font-medium text-danger">This {report.plugin_type} failed.</p>
             <p className="mt-1 text-xs text-muted">{report.errors ?? 'No reason reported.'}</p>
             <p className="mt-2 text-xs text-muted">
               The other plugins of this job were unaffected.
@@ -401,8 +427,48 @@ function ReportPanel({ jobId, report }: { jobId: string; report: PluginReport })
   );
 }
 
-/** One table of reports, for one lifecycle phase. */
-function PhaseTable({
+/** What one plugin reported, as a card: the outcome at a glance, the detail one click away. */
+function ReportCard({
+  jobId,
+  report,
+  onSelect,
+}: {
+  jobId: string;
+  report: PluginReport;
+  onSelect: (pluginName: string) => void;
+}) {
+  const failed = report.status === 'FAILED' || report.status === 'SKIPPED';
+  const line = failed ? report.errors : (report.summary_data?.headline ?? null);
+
+  return (
+    <article className="flex flex-col rounded-lg border border-border bg-surface transition-colors duration-fast ease-out hover:border-border-strong hover:bg-surface-hover">
+      <button
+        type="button"
+        onClick={() => onSelect(report.plugin_name)}
+        className="flex flex-1 flex-col gap-2 rounded-lg p-3 text-left focus-visible:shadow-focus focus-visible:outline-none"
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span className="min-w-0 break-words text-sm font-medium">{report.plugin_name}</span>
+          <ReportStatusBadge status={report.status} />
+        </span>
+        <span className="flex flex-wrap items-center gap-1.5">
+          {report.plugin_type === 'analyzer' && report.summary_data?.verdict ? (
+            <VerdictBadge verdict={report.summary_data.verdict} />
+          ) : null}
+          {report.from_cache ? <Badge tone="info">cache</Badge> : null}
+        </span>
+        <span className="line-clamp-3 text-xs text-muted">{line ?? 'No summary.'}</span>
+      </button>
+      <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-1.5">
+        <span className="text-xs text-faint">{formatDuration(report.execution_time_ms)}</span>
+        <RetryReportButton jobId={jobId} report={report} />
+      </div>
+    </article>
+  );
+}
+
+/** The reports of one lifecycle phase, as a grid that wraps instead of scrolling sideways. */
+function PhaseGrid({
   job,
   phase,
   onSelect,
@@ -421,88 +487,16 @@ function PhaseTable({
         <span className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted" aria-hidden />
           {phase.title}
+          <span className="text-xs font-normal text-faint">{reports.length}</span>
         </span>
       }
       description={phase.description}
       className="mb-4"
     >
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <caption className="sr-only">
-            {phase.title} results for this job
-          </caption>
-          <thead>
-            <tr className="border-b border-border text-xs font-medium text-faint">
-              <th scope="col" className="table-cell">
-                Plugin
-              </th>
-              <th scope="col" className="table-cell">
-                Status
-              </th>
-              {phase.type === 'analyzer' ? (
-                <th scope="col" className="table-cell">
-                  Verdict
-                </th>
-              ) : null}
-              <th scope="col" className="table-cell">
-                Summary
-              </th>
-              <th scope="col" className="table-cell">
-                Duration
-              </th>
-              <th scope="col" className="table-cell">
-                Finished
-              </th>
-              <th scope="col" className="table-cell">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.map((report) => (
-              <tr
-                key={report.id}
-                className="cursor-pointer transition-colors duration-fast ease-out hover:bg-surface-hover"
-                onClick={() => onSelect(report.plugin_name)}
-              >
-                <td className="table-cell font-medium">
-                  {report.plugin_name}
-                  {report.from_cache ? (
-                    <Badge tone="info" className="ml-2">
-                      cache
-                    </Badge>
-                  ) : null}
-                </td>
-                <td className="table-cell">
-                  <ReportStatusBadge status={report.status} />
-                </td>
-                {phase.type === 'analyzer' ? (
-                  <td className="table-cell">
-                    {report.summary_data?.verdict ? (
-                      <VerdictBadge verdict={report.summary_data.verdict} />
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                ) : null}
-                <td className="table-cell text-xs text-muted">
-                  {report.status === 'FAILED' || report.status === 'SKIPPED'
-                    ? report.errors
-                    : (report.summary_data?.headline ?? '—')}
-                </td>
-                <td className="table-cell text-xs text-muted">
-                  {formatDuration(report.execution_time_ms)}
-                </td>
-                <td className="table-cell text-xs text-muted">
-                  {formatDateTime(report.finished_at)}
-                </td>
-                <td className="table-cell">
-                  <RetryReportButton jobId={job.id} report={report} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {reports.map((report) => (
+          <ReportCard key={report.id} jobId={job.id} report={report} onSelect={onSelect} />
+        ))}
       </div>
     </Card>
   );
@@ -532,6 +526,15 @@ export function JobDetailPage() {
     queryFn: () => jobsApi.children(jobId),
     // Only worth asking once the job ran a pivot.
     enabled: Boolean(job && (job.requested_pivots ?? []).length > 0),
+  });
+
+  // Rebuilt from the stored reports on every call, so it follows the job while it runs
+  // and is fetched again when the status changes.
+  const detectionQuery = useQuery({
+    queryKey: ['job', jobId, 'detection-graph', job?.status],
+    queryFn: () => jobsApi.detectionGraph(jobId),
+    enabled: Boolean(job),
+    refetchInterval: job && TERMINAL.has(job.status) ? false : 4000,
   });
 
   const rerunMutation = useMutation({
@@ -751,47 +754,33 @@ export function JobDetailPage() {
         <SummaryFacts job={job} />
       </VerdictBanner>
 
-      <div
-        className="mt-5 flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface-sunken p-1"
-        role="tablist"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'overview'}
-          onClick={() => setTab('overview')}
-          className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none ${
-            activeTab === 'overview'
-              ? 'bg-surface-raised text-content shadow-sm'
-              : 'text-muted hover:text-content'
-          }`}
-        >
-          Overview
-        </button>
-        {job.reports.map((report) => (
-          <button
-            key={report.plugin_name}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === report.plugin_name}
-            onClick={() => setTab(report.plugin_name)}
-            className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none ${
-              activeTab === report.plugin_name
-                ? 'bg-surface-raised text-content shadow-sm'
-                : 'text-muted hover:text-content'
-            }`}
-          >
-            {report.plugin_name}
-            <ReportStatusBadge status={report.status} />
-          </button>
-        ))}
-      </div>
-
       <div className="mt-4">
         {activeTab === 'overview' ? (
           <>
+            <Card
+              title={
+                <span className="flex items-center gap-2">
+                  <Network className="h-4 w-4 text-muted" aria-hidden />
+                  Detection graph
+                  <Badge tone="warning">alpha</Badge>
+                </span>
+              }
+              description="What each source found, and the chain of lookups and pivots that led to it."
+              className="mb-4"
+            >
+              {detectionQuery.data && detectionQuery.data.nodes.length > 1 ? (
+                <DetectionGraph key={job.id} graph={detectionQuery.data} />
+              ) : detectionQuery.isLoading ? (
+                <Skeleton className="h-40" />
+              ) : detectionQuery.error ? (
+                <p className="text-sm text-muted">The graph could not be built.</p>
+              ) : (
+                <p className="text-sm text-muted">Nothing has been found yet.</p>
+              )}
+            </Card>
+
             {PHASES.map((phase) => (
-              <PhaseTable key={phase.type} job={job} phase={phase} onSelect={setTab} />
+              <PhaseGrid key={phase.type} job={job} phase={phase} onSelect={setTab} />
             ))}
 
             {children.length > 0 ? (
@@ -844,20 +833,40 @@ export function JobDetailPage() {
         ) : (
           (() => {
             const report = job.reports.find((entry) => entry.plugin_name === activeTab);
-            if (!report) return <Card>No such plugin in this job.</Card>;
-            return (
-              <Card
-                title={
-                  <span className="flex items-center gap-2">
-                    {report.plugin_name}
-                    <Badge tone={report.plugin_type === 'analyzer' ? 'neutral' : 'info'}>
-                      {report.plugin_type}
-                    </Badge>
-                  </span>
-                }
+            const back = (
+              <Button
+                variant="ghost"
+                onClick={() => setTab('overview')}
+                icon={<ArrowLeft className="h-4 w-4" aria-hidden />}
+                className="mb-3"
               >
-                <ReportPanel jobId={job.id} report={report} />
-              </Card>
+                Back to the overview
+              </Button>
+            );
+            if (!report) {
+              return (
+                <>
+                  {back}
+                  <Card>No such plugin in this job.</Card>
+                </>
+              );
+            }
+            return (
+              <>
+                {back}
+                <Card
+                  title={
+                    <span className="flex items-center gap-2">
+                      {report.plugin_name}
+                      <Badge tone={report.plugin_type === 'analyzer' ? 'neutral' : 'info'}>
+                        {report.plugin_type}
+                      </Badge>
+                    </span>
+                  }
+                >
+                  <ReportPanel jobId={job.id} report={report} />
+                </Card>
+              </>
             );
           })()
         )}

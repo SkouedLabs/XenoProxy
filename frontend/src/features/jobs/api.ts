@@ -36,6 +36,28 @@ export interface RelationGraphData {
   truncated: boolean;
 }
 
+/** The edge that first reached a node: how an element was found, and by which source. */
+export interface DetectionVia {
+  from: string;
+  relation: string;
+  plugin: string | null;
+}
+
+export interface DetectionNode extends GraphNode {
+  /** Hops from the observable the investigation started from. */
+  layer: number;
+  via: DetectionVia | null;
+}
+
+export interface DetectionGraphData {
+  format: string;
+  alpha: boolean;
+  root: string | null;
+  nodes: DetectionNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
 export interface RecapVerdictLine {
   job_id: string;
   observable_value: string;
@@ -103,6 +125,7 @@ export const jobsApi = {
   get: (jobId: string) => api.get<JobDetail>(`/jobs/${jobId}`),
   children: (jobId: string) => api.get<JobSummary[]>(`/jobs/${jobId}/children`),
   recap: (jobId: string) => api.get<Recap>(`/jobs/${jobId}/recap`),
+  detectionGraph: (jobId: string) => api.get<DetectionGraphData>(`/jobs/${jobId}/detection-graph`),
   report: (jobId: string, pluginName: string) =>
     api.get<PluginReportDetail>(`/jobs/${jobId}/reports/${pluginName}`),
   updateTags: (jobId: string, tags: string[]) =>

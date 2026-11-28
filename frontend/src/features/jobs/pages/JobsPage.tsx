@@ -139,7 +139,7 @@ export function JobsPage() {
           className="w-auto min-w-32"
         >
           <option value="">All types</option>
-          {(['ip', 'domain', 'url', 'hash', 'generic'] satisfies ObservableType[]).map((value) => (
+          {(['ip', 'domain', 'url', 'hash', 'phone', 'crypto', 'generic'] satisfies ObservableType[]).map((value) => (
             <option key={value} value={value}>
               {value}
             </option>

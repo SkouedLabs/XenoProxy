@@ -22,6 +22,7 @@ import {
   Users,
   UsersRound,
   X,
+  FileCode2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -70,6 +71,12 @@ const ADMIN_NAV: NavItem[] = [
     to: '/admin/plugin-packages',
     label: 'Plugin packages',
     icon: <Puzzle className="h-[18px] w-[18px]" aria-hidden />,
+    permission: 'plugins:manage',
+  },
+  {
+    to: '/admin/yara',
+    label: 'YARA rules',
+    icon: <FileCode2 className="h-[18px] w-[18px]" aria-hidden />,
     permission: 'plugins:manage',
   },
   {

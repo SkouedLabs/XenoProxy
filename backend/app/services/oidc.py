@@ -83,8 +83,7 @@ async def effective_config(session: AsyncSession) -> OidcSettings:
     pinned: dict[str, Any] = {
         field: getattr(settings, attribute)
         for field, attribute in _ENVIRONMENT_FIELDS.items()
-        if settings.managed_by_environment(attribute)
-        and getattr(settings, attribute) is not None
+        if settings.managed_by_environment(attribute) and getattr(settings, attribute) is not None
     }
     if not pinned:
         return section

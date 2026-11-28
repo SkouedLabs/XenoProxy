@@ -27,7 +27,7 @@ made this morning costs nothing when a colleague repeats it this afternoon.
 - **[22 analyzers](docs/plugins.md#analyzers)**: Shodan and Shodan InternetDB, Censys,
   VirusTotal, AbuseIPDB, URLScan, Onyphe, IPinfo, Joe Sandbox (free cloud and on-premise),
   the abuse.ch feeds, CIRCL hashlookup, crt.sh, RIPEstat, DNS blocklists, the Tor exit
-  list, DNS, RDAP and your own n8n workflows.
+  list, DNS and RDAP.
 - **[Typed observables](docs/specification.md#1-observables)**: IP, domain, URL, hash and
   generic input, refanged automatically — `1.1.1[.]1` and `hxxps://` are understood.
 - **[Playbooks](docs/plugins.md#playbooks)**: preset pipelines per observable type, so an
@@ -36,8 +36,7 @@ made this morning costs nothing when a colleague repeats it this afternoon.
   source's window costs no external call, and the window is set per source.
 - **[Pivots](docs/plugins.md#pivots)**: follow a bad verdict from a URL to its domain to
   the address hosting it, each child job bounded by per-pivot, per-job and depth limits.
-- **[Connectors](docs/plugins.md#connectors)**: publish a finished job to OpenCTI or an
-  n8n workflow, or have a model you host read every source and give its own assessment.
+- **[Connectors](docs/plugins.md#connectors)**: publish a finished job to OpenCTI or MISP, or have a model you host read every source and give its own assessment.
 - **[Fault isolation](docs/specification.md#6-execution-and-failure)**: a source that
   fails, times out or hits a quota degrades that one report. The rest of the job finishes.
 
@@ -48,7 +47,7 @@ trail](docs/operations.md#audit), and a [credential vault](docs/security.md#cred
 that never returns a key to the browser. The whole picture is in [Security](docs/security.md).
 
 Everything the interface does is a [REST endpoint](docs/api.md), so the same work runs from
-a script or from n8n — and two [MCP servers](docs/api.md#mcp-servers) expose it to an agent,
+a script or from an automation tool — and two [MCP servers](docs/api.md#mcp-servers) expose it to an agent,
 one for analysis and one for administration.
 
 ## Quick start

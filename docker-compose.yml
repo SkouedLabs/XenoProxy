@@ -89,11 +89,17 @@ services:
         uploads.mkdir(parents=True, exist_ok=True)
         os.chown(uploads, BACKEND_UID, BACKEND_UID)
         os.chmod(uploads, 0o750)
+        yara_rules = pathlib.Path('/srv/yara_rules')
+        (yara_rules / 'custom').mkdir(parents=True, exist_ok=True)
+        for path in [yara_rules, yara_rules / 'custom']:
+            os.chown(path, BACKEND_UID, BACKEND_UID)
+            os.chmod(path, 0o750)
         print('secrets ready', flush=True)
     volumes:
       - secrets:/run/secrets
       - plugins:/srv/plugins
       - uploads:/srv/uploads
+      - yara_rules:/srv/yara_rules
     restart: "no"
 
   database:
@@ -241,6 +247,7 @@ services:
       BACKEND_PLUGINS_ENABLED: "true"
       BACKEND_PLUGINS_DIR: /app/plugins
       BACKEND_UPLOADS_DIR: /app/uploads
+      BACKEND_YARA_RULES_DIR: /app/yara_rules
     volumes:
       - secrets:/run/secrets:ro
       # Analyzer plugins. Drop a folder in here, or upload a zip from Admin,
@@ -249,9 +256,16 @@ services:
       # Submitted samples. Kept apart from the plugins volume: this one
       # holds untrusted bytes that are never imported and never served.
       - uploads:/app/uploads
+      # YARA rulesets. Put your own .yar files in custom/ (bind-mount a host
+      # folder here instead, e.g. ./yara-rules:/app/yara_rules, to manage them
+      # in place); pulled public rulesets land in sources/.
+      - yara_rules:/app/yara_rules
     tmpfs:
       - /tmp:size=64m,mode=1777
-    networks: [data, edge]
+    # `outbound` is only for the assistant's connection test and chat, which run
+    # in this process and must reach a hosted gateway such as OpenRouter. The
+    # API still does not fetch files or submit samples: that stays on the worker.
+    networks: [data, edge, outbound]
     mem_limit: 768m
     pids_limit: 256
     <<: *hardening
@@ -282,6 +296,7 @@ services:
       BACKEND_PLUGINS_ENABLED: "true"
       BACKEND_PLUGINS_DIR: /app/plugins
       BACKEND_UPLOADS_DIR: /app/uploads
+      BACKEND_YARA_RULES_DIR: /app/yara_rules
       # Set these to reach the internet through a corporate proxy, and mount the
       # internal certificate authority instead of disabling verification.
       # BACKEND_OUTBOUND_PROXY_URL: http://proxy.internal:3128
@@ -290,6 +305,13 @@ services:
       - secrets:/run/secrets:ro
       - plugins:/app/plugins:ro
       - uploads:/app/uploads:ro
+      # Written by a ruleset pull, which only the worker can do (it alone has an
+      # outbound route), and read by the local YARA scanner.
+      - yara_rules:/app/yara_rules
+      # Local sanctions designations for the crypto_taint analyzer: an OFAC SDN XML or
+      # plain address lists. Read-only here; populate the volume (or bind-mount a host
+      # folder, e.g. ./crypto-intel:/app/crypto_intel:ro) from outside the stack.
+      - crypto_intel:/app/crypto_intel:ro
     tmpfs:
       - /tmp:size=64m,mode=1777
     networks: [data, outbound]
@@ -365,3 +387,5 @@ volumes:
   secrets:
   plugins:
   uploads:
+  crypto_intel:
+  yara_rules:

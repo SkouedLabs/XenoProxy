@@ -17,7 +17,7 @@ import { ApiError } from '@/lib/api-client';
 import type { ObservableType, Playbook, PluginType } from '@/lib/types';
 import { adminApi, type PlaybookPayload } from '../api';
 
-const OBSERVABLE_TYPES: ObservableType[] = ['ip', 'domain', 'url', 'hash', 'file', 'generic'];
+const OBSERVABLE_TYPES: ObservableType[] = ['ip', 'domain', 'url', 'hash', 'file', 'phone', 'crypto', 'generic'];
 
 const EMPTY: PlaybookPayload = {
   name: '',

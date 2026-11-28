@@ -27,6 +27,7 @@ from app.models.job import JobStatus, ObservableType, Tlp, Verdict
 from app.plugins.base.connector import BaseConnector
 from app.plugins.base.plugin import JobContext, PluginResult, PluginSummary, ProviderInfo
 from app.plugins.base.registry import register
+from app.services import tlp
 
 # The model answers with one of these, and nothing else is accepted.
 _VERDICTS = {
@@ -176,6 +177,10 @@ class AiAssessmentConnector(BaseConnector):
                 "No inference server is configured. An administrator sets it in "
                 "Admin, Settings, Assistant."
             )
+
+        refusal = await tlp.inference_refusal(context.tlp, settings.base_url)
+        if refusal:
+            return self.skipped(refusal)
 
         provider = build_provider(settings)
         try:

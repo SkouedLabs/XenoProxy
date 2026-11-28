@@ -251,9 +251,7 @@ class JoeSandboxCloudAnalyzer(BaseJoeSandbox):
 
     name = "joesandbox_cloud"
     label = "Joe Sandbox Cloud Basic"
-    description = (
-        "Behavioural verdicts from the free Joe Sandbox cloud. Submissions are published."
-    )
+    description = "Behavioural verdicts from the free Joe Sandbox cloud. Submissions are published."
     options_schema: ClassVar[dict[str, Any]] = {
         "submit_new_analysis": {
             "type": "boolean",

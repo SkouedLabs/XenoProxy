@@ -17,7 +17,21 @@ from app.api.middleware import (
     RateLimitMiddleware,
     RequestContextMiddleware,
 )
-from app.api.v1 import admin, assistant, auth, catalog, identity, intel, jobs, mcp, plugins
+from app.api.v1 import (
+    admin,
+    assistant,
+    auth,
+    blocklist,
+    catalog,
+    identity,
+    intel,
+    jobs,
+    mcp,
+    passwords,
+    plugins,
+    takedown,
+    yara,
+)
 from app.api.v1 import settings as settings_routes
 from app.core import http_client
 from app.core.config import get_settings
@@ -103,6 +117,10 @@ def create_app() -> FastAPI:
     v1.include_router(mcp.router)
     v1.include_router(admin.router)
     v1.include_router(plugins.router)
+    v1.include_router(yara.router)
+    v1.include_router(blocklist.router)
+    v1.include_router(passwords.router)
+    v1.include_router(takedown.router)
     v1.include_router(identity.router)
     v1.include_router(settings_routes.router)
     app.include_router(v1)

@@ -75,7 +75,7 @@ Only an analyzer has a cache lifetime. A connector records that an export
 happened, so serving one from cache would claim an export that did not occur,
 and a pivot's decision belongs to one parent job; neither is reusable.
 
-Plugins that call an internal service (n8n, OpenCTI) have a base URL option and
+Plugins that call an internal service (OpenCTI, MISP) have a base URL option and
 an "allow a target on the internal network" switch. Leave that switch off for
 anything reachable from the internet. Neither option can be overridden per
 analyst: that would make the personal configuration layer a way around the

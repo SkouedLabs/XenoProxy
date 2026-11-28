@@ -55,7 +55,7 @@ walk the investigation in either direction.
 **JSON** contains everything, including raw payloads, and is meant for tooling.
 **Markdown** is a readable incident write-up. Both are listed in the audit trail.
 
-## Calling XenoProxy from a script or n8n
+## Calling XenoProxy from a script or an automation tool
 
 Create a token in **My access**, then send it as `Authorization: Bearer <token>`.
 The token carries your own permissions, is shown once and can be revoked.

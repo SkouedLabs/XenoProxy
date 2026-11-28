@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "XenoProxy OSINT orchestration platform backend"
 requires-python = ">=3.13"
 dependencies = [
+    # Parses the OFAC SDN XML an administrator places in the crypto intel directory.
+    "defusedxml==0.7.1",
     "fastapi==0.162.2",
     "uvicorn[standard]==0.54.0",
     "pydantic==2.14.3",
@@ -26,6 +28,15 @@ dependencies = [
     # Reads password-protected archives. The standard library only handles
     # legacy ZipCrypto; a sample is normally shipped in an AES zip.
     "pyzipper==0.4.0",
+    # Local, in-process YARA scanning: no sample leaves the instance.
+    "yara-python==4.5.4",
+    # Macro analysis of Office documents, read in memory and never executed.
+    "oletools==0.60.2",
+    # Reads an Android package's manifest in memory. Its dependency tree is large;
+    # the scan target audits it like everything else.
+    "androguard==4.1.4",
+    # Numbering plans for phone metadata (country, line type, carrier). Offline.
+    "phonenumbers==9.0.44",
     ]
 
 [project.optional-dependencies]

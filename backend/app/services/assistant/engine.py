@@ -23,6 +23,7 @@ from app.core.errors import ForbiddenError, NotFoundError, ValidationFailedError
 from app.core.logging import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.user import User
+from app.services import tlp
 from app.services.assistant import tools as tool_registry
 from app.services.assistant.prompts import effective_prompt
 from app.services.assistant.provider import ProviderError, build_provider
@@ -169,7 +170,9 @@ def _history(conversation: Conversation, limit: int) -> list[dict[str, Any]]:
     return messages
 
 
-async def _job_context(session: AsyncSession, user: User, job_id: uuid.UUID | None) -> str:
+async def _job_context(
+    session: AsyncSession, user: User, job_id: uuid.UUID | None, *, withhold_red: bool = True
+) -> str:
     """The job the conversation was opened from, as delimited data.
 
     It is given as a user-role message rather than appended to the system
@@ -178,7 +181,7 @@ async def _job_context(session: AsyncSession, user: User, job_id: uuid.UUID | No
     """
     if job_id is None:
         return ""
-    context = tool_registry.ToolContext(session=session, user=user)
+    context = tool_registry.ToolContext(session=session, user=user, withhold_red=withhold_red)
     try:
         job = await tool_registry.load_visible_job(context, job_id)
     except tool_registry.ToolError:
@@ -201,12 +204,17 @@ async def _job_context(session: AsyncSession, user: User, job_id: uuid.UUID | No
 
 
 async def build_messages(
-    session: AsyncSession, user: User, conversation: Conversation, settings: Any
+    session: AsyncSession,
+    user: User,
+    conversation: Conversation,
+    settings: Any,
+    *,
+    withhold_red: bool = True,
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": effective_prompt(settings.system_prompt)}
     ]
-    job_block = await _job_context(session, user, conversation.job_id)
+    job_block = await _job_context(session, user, conversation.job_id, withhold_red=withhold_red)
     if job_block:
         messages.append({"role": "user", "content": job_block})
     messages.extend(_history(conversation, int(settings.history_messages)))
@@ -231,13 +239,18 @@ async def run_turn(
     submitted job is written and never runs.
     """
     provider = build_provider(settings)
-    messages = await build_messages(session, user, conversation, settings)
+    withhold_red = not await tlp.endpoint_is_internal(str(settings.base_url))
+    messages = await build_messages(
+        session, user, conversation, settings, withhold_red=withhold_red
+    )
 
     if not settings.agent_enabled:
         completion = await provider.chat(messages)
         return TurnResult(content=completion.content)
 
-    context = tool_registry.ToolContext(session=session, user=user, queue=queue)
+    context = tool_registry.ToolContext(
+        session=session, user=user, queue=queue, withhold_red=withhold_red
+    )
     offered = tool_registry.catalogue(allow_writes=bool(settings.allow_writes))
     schemas = [tool.schema() for tool in offered]
     steps: list[dict[str, Any]] = []
@@ -333,7 +346,10 @@ async def stream_turn(
     contradicts is worse than waiting.
     """
     provider = build_provider(settings)
-    messages = await build_messages(session, user, conversation, settings)
+    withhold_red = not await tlp.endpoint_is_internal(str(settings.base_url))
+    messages = await build_messages(
+        session, user, conversation, settings, withhold_red=withhold_red
+    )
     try:
         async for piece in provider.chat_stream(messages):
             yield piece

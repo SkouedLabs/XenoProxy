@@ -19,8 +19,12 @@ const HEIGHT = 640;
 const RING = 105;
 
 /** One colour per kind, taken from the theme so the graph follows light and dark. */
-const KIND_COLOUR: Record<string, string> = {
+export const KIND_COLOUR: Record<string, string> = {
   ip: 'var(--color-primary)',
+  analyzer: 'var(--color-primary)',
+  pivot: 'var(--color-info)',
+  tag: 'var(--color-content-muted)',
+  detection: 'var(--color-danger)',
   domain: 'var(--color-info)',
   url: 'var(--color-info)',
   hash: 'var(--color-warning)',

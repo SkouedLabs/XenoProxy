@@ -51,6 +51,22 @@ ENV PATH="/opt/venv/bin:$PATH"     PYTHONPATH=/src     PYTHONDONTWRITEBYTECODE=1
 WORKDIR /src
 
 
+# Security scan runner: same dependency set as the backend, plus the scanners.
+# `docker build --target scan ./backend` fails on any finding (bandit on the
+# source, pip-audit on the resolved dependencies), so it works as a gate in CI
+# as well as by hand. The source is copied in only here, not in `test`.
+FROM test AS scan
+
+COPY bandit.yaml ./
+COPY app ./app
+RUN bandit -r app -c bandit.yaml -ll --exit-zero -f txt -o /tmp/bandit-report.txt \
+ && cat /tmp/bandit-report.txt \
+ && bandit -r app -c bandit.yaml -ll \
+ && pip freeze --exclude xenoproxy-backend > /tmp/audit-set.txt \
+ && pip install pip-audit==2.10.1 \
+ && pip-audit --strict --progress-spinner off -r /tmp/audit-set.txt
+
+
 FROM python:3.13-alpine3.22 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

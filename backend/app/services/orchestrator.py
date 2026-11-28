@@ -177,7 +177,9 @@ async def candidate_plugins(
             skipped.append(SkippedPlugin(cls.name, plugin_type, "disabled"))
             continue
 
-        max_tlp = config.max_tlp
+        max_tlp = tlp_policy.effective_cap(
+            config.max_tlp, cls.trusted_internal_max_tlp, config.options or {}
+        )
         if not tlp_policy.allows(job_tlp, max_tlp):
             skipped.append(
                 SkippedPlugin(cls.name, plugin_type, tlp_policy.refusal_reason(job_tlp, max_tlp))
@@ -609,7 +611,6 @@ async def _run_analysis_phase(
     await asyncio.gather(*(execute(report_id, name) for report_id, name in pending))
 
 
-
 async def _sample_access(session: AsyncSession, plan: _JobPlan) -> SampleAccess | None:
     """How this job's plugins may reach the submitted file, if at all.
 
@@ -631,7 +632,9 @@ async def _sample_access(session: AsyncSession, plan: _JobPlan) -> SampleAccess 
         sha256=plan.observable.value,
         file_name=plan.file_name or "",
         read_bytes=read if allowed else None,
+        read_local=read,
     )
+
 
 async def _run_analyzer(
     session: AsyncSession,

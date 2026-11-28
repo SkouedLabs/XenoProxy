@@ -253,3 +253,64 @@ def test_a_failed_turn_keeps_the_question() -> None:
     before, _, after = source.partition("engine.run_turn")
     assert "await session.commit()" in before, "the question is not stored before the model runs"
     assert "rollback" in after, "the failed turn should still discard its own uncommitted work"
+
+
+# -- Connection failures are reported, never a 500 ---------------------------
+
+
+def _openrouter() -> OpenAiProvider:
+    settings = AssistantSettings(
+        provider="openai", base_url="https://openrouter.ai/api", model="m", api_key="k" * 16
+    )
+    return OpenAiProvider(settings)
+
+
+async def test_an_unreachable_server_is_a_provider_error_not_a_crash() -> None:
+    import httpx
+    import respx
+
+    from app.services.assistant.provider import ProviderError
+
+    with respx.mock:
+        respx.get("https://openrouter.ai/api/v1/models").mock(
+            side_effect=httpx.ConnectError("name resolution failed")
+        )
+        with pytest.raises(ProviderError, match="could not reach"):
+            await _openrouter().list_models()
+
+
+async def test_a_timeout_is_a_provider_error() -> None:
+    import httpx
+    import respx
+
+    from app.services.assistant.provider import ProviderError
+
+    with respx.mock:
+        respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+            side_effect=httpx.ReadTimeout("slow")
+        )
+        with pytest.raises(ProviderError, match="in time"):
+            await _openrouter().chat([{"role": "user", "content": "hi"}])
+
+
+async def test_a_refused_destination_is_a_provider_error(monkeypatch) -> None:
+    from app.core import http_client
+    from app.services.assistant.provider import ProviderError
+
+    def refuse(*_a, **_k):
+        raise http_client.OutboundRequestError("host could not be resolved")
+
+    monkeypatch.setattr(http_client, "validate_destination", refuse)
+    with pytest.raises(ProviderError, match="refused"):
+        await _openrouter().list_models()
+
+
+async def test_openrouter_model_listing_still_works() -> None:
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://openrouter.ai/api/v1/models").mock(
+            return_value=httpx.Response(200, json={"data": [{"id": "b/x"}, {"id": "a/y"}]})
+        )
+        assert await _openrouter().list_models() == ["a/y", "b/x"]

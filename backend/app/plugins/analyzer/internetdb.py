@@ -90,9 +90,7 @@ class InternetDbAnalyzer(BaseAnalyzer):
                 hostnames=hostnames,
                 technologies=[
                     entry
-                    for entry in (
-                        technologies.from_cpe(str(cpe)) for cpe in raw.get("cpes") or []
-                    )
+                    for entry in (technologies.from_cpe(str(cpe)) for cpe in raw.get("cpes") or [])
                     if entry
                 ],
                 headline=headline + self.resolved_note(observable, address),

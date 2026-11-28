@@ -46,9 +46,12 @@ class DnsAnalyzer(BaseAnalyzer):
         url="",
         api_base_url="The resolver of the container, over DNS",
         free_tier="No credential and no quota: the lookup is made directly.",
-        notes="Nothing leaves for a third party, so this is allowed up to TLP:RED.",
+        notes=(
+            "The name goes to the container's resolver, which forwards it to a recursive "
+            "server outside the deployment, so this is allowed up to TLP:AMBER."
+        ),
     )
-    max_tlp = Tlp.RED
+    max_tlp = Tlp.AMBER
     free_tier = True
     default_timeout = 20
     default_cache_ttl = 3600

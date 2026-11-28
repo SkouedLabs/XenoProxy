@@ -110,9 +110,7 @@ class CirclPassiveDnsAnalyzer(_CirclService):
 
     async def run(self, observable: Observable) -> PluginResult:
         query = (
-            observable.value
-            if observable.type is ObservableType.IP
-            else hostname_of(observable)
+            observable.value if observable.type is ObservableType.IP else hostname_of(observable)
         )
         if not query:
             return self.skipped("This observable carries nothing to look up.")
@@ -133,9 +131,7 @@ class CirclPassiveDnsAnalyzer(_CirclService):
         if not records:
             return self.not_found("CIRCL has no observed resolution for this value.")
 
-        values = sorted(
-            {str(entry.get("rdata") or "") for entry in records if entry.get("rdata")}
-        )
+        values = sorted({str(entry.get("rdata") or "") for entry in records if entry.get("rdata")})
         firsts = [str(e.get("time_first") or "") for e in records if e.get("time_first")]
         lasts = [str(e.get("time_last") or "") for e in records if e.get("time_last")]
         first = min(firsts, default="")

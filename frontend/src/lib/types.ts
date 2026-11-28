@@ -1,6 +1,6 @@
 /** Types mirroring the API contract. */
 
-export type ObservableType = 'ip' | 'domain' | 'url' | 'hash' | 'file' | 'generic';
+export type ObservableType = 'ip' | 'domain' | 'url' | 'hash' | 'file' | 'phone' | 'crypto' | 'generic';
 export type JobStatus =
   | 'PENDING'
   | 'RUNNING'
@@ -241,6 +241,8 @@ export interface Plugin {
   documentation_url: string;
   free_tier: boolean;
   requires_network: boolean;
+  /** "alpha": verified against mocks only, not yet against the live provider. */
+  maturity?: 'stable' | 'alpha';
   provider: ProviderInfo;
   is_custom: boolean;
   plugin_version: string;
@@ -564,4 +566,28 @@ export interface AssistantProfileWrite {
   /** Empty keeps the stored key, so the browser never has to hold it. */
   api_key: string;
   headers?: Record<string, string>;
+}
+
+export interface YaraSource {
+  id: string;
+  label: string;
+  description: string;
+  homepage: string;
+  licence: string;
+  url: string;
+  pulled: boolean;
+  enabled: boolean;
+  pulled_at: string | null;
+  archive_sha256: string | null;
+  files: number;
+  rejected: string[];
+}
+
+export interface YaraOverview {
+  directory: string;
+  custom_directory: string;
+  custom_files: number;
+  pull_enabled: boolean;
+  status: { source?: string; state?: string; error?: string; files?: number; compiled?: number };
+  sources: YaraSource[];
 }

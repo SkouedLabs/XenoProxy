@@ -86,7 +86,7 @@ second factor, so the requirement applies to local accounts.
 
 ## API tokens
 
-Personal tokens let a script or an n8n workflow act as the analyst who created them, with
+Personal tokens let a script or an automation tool act as the analyst who created them, with
 exactly that analyst's permissions. A token is at least 32 random bytes, shown once,
 stored as a SHA-256 hash with a visible prefix, scoped, expiring and revocable, and its
 last use is displayed.

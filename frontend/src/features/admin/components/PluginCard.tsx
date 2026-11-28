@@ -299,6 +299,11 @@ export function PluginCard({ plugin }: { plugin: Plugin }) {
             <Badge tone={TYPE_TONE[plugin.plugin_type]} title={TYPE_EXPLANATION[plugin.plugin_type]}>
               {plugin.plugin_type}
             </Badge>
+            {plugin.maturity === 'alpha' ? (
+              <Badge tone="warning" title="Alpha: tested against mocks only, not yet against the live provider">
+                Alpha
+              </Badge>
+            ) : null}
             {plugin.free_tier ? <Badge tone="success">Free tier</Badge> : null}
             {plugin.is_custom ? (
               <Badge tone="primary" title="Provided by an installed plugin package">

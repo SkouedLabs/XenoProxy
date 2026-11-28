@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import PERMISSIONS
 from app.core.logging import get_logger
-from app.models.job import Job, JobOrigin, PluginKind
+from app.models.job import Job, JobOrigin, PluginKind, Tlp
 from app.models.user import User
 from app.plugins import load_all
 from app.plugins.base.registry import describe, iter_plugins
@@ -57,6 +57,10 @@ class ToolContext:
     # it a submitted job is written and never run, which looks to the analyst
     # exactly like the scan hanging.
     queue: Any | None = None
+    # A job at TLP:RED may not be shown to an inference server outside the
+    # deployment. Closed by default: the engine opens it only after checking
+    # where the server is.
+    withhold_red: bool = True
 
     def require(self, permission: str) -> None:
         """Refuse exactly as the API would, with the same words."""
@@ -128,6 +132,8 @@ async def _classify_observable(_context: ToolContext, args: dict[str, Any]) -> A
 async def _search_jobs(context: ToolContext, args: dict[str, Any]) -> Any:
     context.require("jobs:read")
     statement = _visible_jobs(context.user)
+    if context.withhold_red:
+        statement = statement.where(Job.tlp != Tlp.RED)
 
     search = str(args.get("observable") or "").strip()
     if search:
@@ -300,6 +306,11 @@ async def load_visible_job(context: ToolContext, raw_id: Any) -> Job:
         # Exactly what the API answers: a job the analyst may not see does not
         # exist, and the model learns nothing from the difference.
         raise ToolError("no such job")
+    if context.withhold_red and job.tlp is Tlp.RED:
+        raise ToolError(
+            "this job is TLP:RED and the inference server is not on a private network, "
+            "so it is not shown to the model"
+        )
     return job
 
 

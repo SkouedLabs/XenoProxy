@@ -230,6 +230,23 @@ class RecapVerdictLine(BaseModel):
     links: list[dict[str, Any]]
 
 
+class XenoScoreContribution(BaseModel):
+    plugin: str
+    verdict: str
+    weight: float
+    points: float
+
+
+class XenoScoreOut(BaseModel):
+    score: int | None
+    method: str
+    alpha: bool = True
+    sources_scored: int
+    sources_considered: int
+    contributions: list[XenoScoreContribution]
+    unscored: list[str]
+
+
 class RecapOut(BaseModel):
     subject: RecapSubject
     network: RecapNetwork
@@ -237,3 +254,4 @@ class RecapOut(BaseModel):
     registration: RecapRegistration
     verdicts: list[RecapVerdictLine]
     graph: GraphOut
+    xeno_score: XenoScoreOut | None = None

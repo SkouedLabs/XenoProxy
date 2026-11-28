@@ -84,9 +84,7 @@ class PassiveTotalAnalyzer(BaseAnalyzer):
 
     async def run(self, observable: Observable) -> PluginResult:
         query = (
-            observable.value
-            if observable.type is ObservableType.IP
-            else hostname_of(observable)
+            observable.value if observable.type is ObservableType.IP else hostname_of(observable)
         )
         if not query:
             return self.skipped("This observable carries nothing to look up.")

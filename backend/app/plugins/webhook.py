@@ -1,10 +1,8 @@
 """Signed outbound webhook helper, shared by the webhook-shaped plugins.
 
-The n8n integration exists in two shapes — an analyzer that asks a workflow
-about an observable, and a connector that tells a workflow a job finished — and
-both must authenticate the same way. The signing scheme lives here so the two
-cannot drift apart, which would silently break whichever side the workflow was
-written against.
+Every outbound webhook (critical-threat alerts, notifications) authenticates the
+same way. The signing scheme lives here so the senders cannot drift apart, which
+would silently break whichever receiver was written against them.
 
 The signature covers `"{timestamp}.{body}"` with HMAC-SHA256, so a receiver can
 reject a replayed payload by checking the timestamp window as well as the
@@ -68,17 +66,3 @@ async def post_signed(
         timeout=timeout,
         allow_private=allow_private,
     )
-
-
-def coerce_json_object(raw: Any) -> dict[str, Any]:
-    """Normalise whatever a workflow returned into a JSON object.
-
-    n8n returns a bare list when the workflow ends on a node with several
-    items, and a scalar when it ends on a Set node, so neither shape is an
-    error worth failing the report over.
-    """
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, list):
-        return {"items": raw}
-    return {"value": raw}

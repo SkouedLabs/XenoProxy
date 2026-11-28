@@ -28,7 +28,7 @@ analysts, deployed on a single host behind a reverse proxy.
 
 - **Analyst**: authenticated, may run scans, read the shared history and export reports.
 - **Administrator**: additionally configures credentials, analyzers, playbooks and users.
-- **Automation**: a script or n8n workflow holding a personal API token, with that user's rights.
+- **Automation**: a script or automation workflow holding a personal API token, with that user's rights.
 - **External provider**: returns data XenoProxy parses; trusted to answer, never trusted in content.
 - **Attacker**: unauthenticated on the network, or an analyst trying to exceed their rights.
 

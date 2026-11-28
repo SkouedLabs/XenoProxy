@@ -21,7 +21,7 @@ from app.plugins.base.plugin import (
     SecretSpec,
 )
 from app.plugins.base.registry import describe, iter_plugins, register
-from app.plugins.connector.n8n_webhook import N8nWebhookConnector
+from app.plugins.connector.critical_webhook import CriticalWebhookConnector
 from app.plugins.pivot.domain_to_ip import DomainToIpPivot
 from app.plugins.pivot.url_to_domain import UrlToDomainPivot
 from app.services import plugin_runtime
@@ -87,9 +87,9 @@ def test_the_registry_refuses_a_declared_type_that_contradicts_the_base() -> Non
 
 def test_connectors_are_not_selected_by_observable_type() -> None:
     """A connector with no declared types exports whatever the job produced."""
-    assert N8nWebhookConnector.supported_types == ()
+    assert CriticalWebhookConnector.supported_types == ()
     for observable_type in ObservableType:
-        assert N8nWebhookConnector.supports(observable_type)
+        assert CriticalWebhookConnector.supports(observable_type)
 
 
 # --------------------------------------------------------------------------
@@ -115,8 +115,8 @@ def _context(
 
 
 def test_a_connector_declines_a_verdict_below_its_floor() -> None:
-    connector = N8nWebhookConnector(
-        secrets={"webhook_url": "https://n8n.example.com/webhook/x"},
+    connector = CriticalWebhookConnector(
+        secrets={"webhook_url": "https://hooks.example.com/x"},
         options={"minimum_verdict": "malicious"},
     )
     assert connector.refusal_reason(_context(verdict=Verdict.MALICIOUS), JobStatus.SUCCESS) is None
@@ -127,8 +127,8 @@ def test_a_connector_declines_a_verdict_below_its_floor() -> None:
 
 
 def test_a_typo_in_the_verdict_floor_does_not_silently_disable_the_connector() -> None:
-    connector = N8nWebhookConnector(
-        secrets={"webhook_url": "https://n8n.example.com/webhook/x"},
+    connector = CriticalWebhookConnector(
+        secrets={"webhook_url": "https://hooks.example.com/x"},
         options={"minimum_verdict": "maliciuos"},
     )
     refusal = connector.refusal_reason(_context(), JobStatus.SUCCESS)
@@ -137,7 +137,7 @@ def test_a_typo_in_the_verdict_floor_does_not_silently_disable_the_connector() -
 
 
 def test_a_connector_declines_a_job_where_everything_failed() -> None:
-    connector = N8nWebhookConnector(secrets={"webhook_url": "https://n8n.example.com/webhook/x"})
+    connector = CriticalWebhookConnector(secrets={"webhook_url": "https://hooks.example.com/x"})
     refusal = connector.refusal_reason(_context(), JobStatus.FAILED)
     assert refusal is not None
     assert "nothing to export" in refusal

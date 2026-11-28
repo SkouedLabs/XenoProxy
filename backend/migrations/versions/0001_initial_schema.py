@@ -33,7 +33,9 @@ def downgrade() -> None:
 def _grant_runtime_privileges() -> None:
     """Give the runtime role data access only, and append-only audit rights."""
     connection = op.get_bind()
-    role = connection.exec_driver_sql("SELECT current_setting('xenoproxy.runtime_role', true)").scalar()
+    role = connection.exec_driver_sql(
+        "SELECT current_setting('xenoproxy.runtime_role', true)"
+    ).scalar()
     if not role:
         return
 

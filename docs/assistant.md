@@ -39,6 +39,17 @@ that are actually in effect — some servers silently ignore what they do not su
 
 The section has a connection test that lists the models before you save.
 
+**Network.** The connection test and the chat run in the API container, so that container
+has an outbound route (the `outbound` network) for a hosted gateway. A self-hosted server on
+the internal network is reached the same way, given its address is allowed. Failures are shown
+as a sentence: an unreachable host, a refused destination, a timeout or an HTTP error each say
+which one happened.
+
+**TLP:RED.** A RED job never leaves the deployment. The model is a destination too, so a
+RED job is shown to it only when its address resolves entirely to private addresses. With a
+hosted gateway such as OpenRouter the assistant does not see RED jobs (they are absent from
+search and refused when opened) and `ai_assessment` skips them. See [TLP policy](tlp-policy.md).
+
 The endpoint URL is an administrator-only setting and is validated like any other outbound
 address: private ranges need the explicit allowance. See [Security](security.md#egress).
 

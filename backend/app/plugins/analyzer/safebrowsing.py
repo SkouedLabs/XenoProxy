@@ -123,9 +123,7 @@ class SafeBrowsingAnalyzer(BaseAnalyzer):
 
         kinds = sorted(
             {
-                _THREAT_LABEL.get(
-                    str(entry.get("threatType")), str(entry.get("threatType"))
-                )
+                _THREAT_LABEL.get(str(entry.get("threatType")), str(entry.get("threatType")))
                 for entry in matches
             }
         )

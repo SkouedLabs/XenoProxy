@@ -88,6 +88,17 @@ class Settings(BaseSettings):
     # execute, and they should not share a mount.
     uploads_dir: str = "/app/uploads"
     plugins_upload_enabled: bool = True
+    # YARA rulesets for the local scanner. `custom/` holds rules the operator
+    # drops in (mount a host folder here to manage them in place); `sources/`
+    # holds public rulesets pulled from the interface. The API reads this
+    # directory, only the worker writes to it.
+    yara_rules_dir: str = "/app/yara_rules"
+    yara_pull_enabled: bool = True
+    # Password breach check. Off by default: it sends the first 5 hex characters of a
+    # SHA-1 hash to api.pwnedpasswords.com (k-anonymity). The password itself never leaves.
+    hibp_passwords_enabled: bool = False
+    # Local sanctions designations for crypto addresses (plain lists or OFAC SDN XML).
+    crypto_intel_dir: str = "/app/crypto_intel"
 
     cache_default_ttl_seconds: int = 86400
     analyzer_default_timeout_seconds: int = 60

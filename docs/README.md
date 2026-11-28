@@ -21,6 +21,7 @@ analysts. Start with [Getting started](install.md); the rest is read when you ne
 | [Analyst guide](help/analyst.md) | Submitting an observable, reading a verdict, the cache, exporting a report. A condensed version is served in the application under the `?` button. |
 | [Plugins and playbooks](plugins.md) | The three plugin types, the analyzer catalogue with what each provider needs, playbooks, the cache, and how configuration layers resolve. |
 | [REST API and MCP](api.md) | Authenticating a script, the endpoints, personal tokens, and the two MCP servers. |
+| [TLP policy](tlp-policy.md) | Which tool may run at which handling level, what stays inside, and why no sample is ever executed. |
 | [Assistant](assistant.md) | The chatbot on a model you host, what it can read, and agent mode with its limits. |
 
 ## Open it to your team

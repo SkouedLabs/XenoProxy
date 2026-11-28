@@ -144,6 +144,7 @@ def describe(cls: type[BasePlugin]) -> dict[str, Any]:
         "max_tlp": cls.max_tlp.value,
         "is_custom": cls.is_custom,
         "plugin_version": cls.plugin_version,
+        "maturity": cls.maturity,
         "requires_network": cls.requires_network,
         "provider": cls.provider.as_dict(),
     }

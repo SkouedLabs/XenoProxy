@@ -122,9 +122,7 @@ class ShodanAnalyzer(BaseAnalyzer):
                 f"{len(ports)} open port(s), {len(cves)} known CVE(s)."
                 + self.resolved_note(observable, address)
             ),
-            links=[
-                {"label": "Open in Shodan", "url": f"https://www.shodan.io/host/{address}"}
-            ],
+            links=[{"label": "Open in Shodan", "url": f"https://www.shodan.io/host/{address}"}],
             extra={
                 "last_update": raw.get("last_update"),
                 "os": raw.get("os"),

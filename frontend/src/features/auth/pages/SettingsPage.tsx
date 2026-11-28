@@ -84,7 +84,7 @@ export function SettingsPage() {
       <PageHeader
         breadcrumb={['Home', 'My access']}
         title="My access"
-        description="Your password and the personal tokens that let scripts or n8n call XenoProxy as you."
+        description="Your password and the personal tokens that let scripts or automation call XenoProxy as you."
       />
 
       {user?.must_change_password ? (
@@ -191,7 +191,7 @@ export function SettingsPage() {
               id="key-name"
               value={keyName}
               maxLength={128}
-              placeholder="n8n enrichment workflow"
+              placeholder="Enrichment script"
               onChange={(event) => setKeyName(event.target.value)}
             />
           </div>

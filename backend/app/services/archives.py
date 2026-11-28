@@ -91,8 +91,9 @@ def looks_like_archive(payload: bytes) -> bool:
 def _digest_entry(handle: zipfile.ZipFile, info: zipfile.ZipInfo) -> ArchiveEntry:
     """Hash one entry while it decompresses, refusing to read it all first."""
     sha256 = hashlib.sha256()
-    md5 = hashlib.md5()  # noqa: S324 - an identifier for lookups, not a security claim
-    sha1 = hashlib.sha1()  # noqa: S324 - same
+    # MD5 and SHA-1 are identifiers for lookups, not a security claim.
+    md5 = hashlib.md5(usedforsecurity=False)
+    sha1 = hashlib.sha1(usedforsecurity=False)
     total = 0
     stored = max(1, info.compress_size)
 

@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
+
+import httpx
 
 from app.core import http_client
 from app.core.logging import get_logger
@@ -29,6 +32,28 @@ MAX_TOOL_RESULT_CHARS = 8000
 
 class ProviderError(RuntimeError):
     """The inference server refused, failed or answered something unusable."""
+
+
+@contextmanager
+def _transport_errors() -> Any:
+    """Turn a connection that never produced an answer into a ProviderError.
+
+    Only an HTTP answer used to become a ProviderError. A refused destination,
+    a name that does not resolve, a timeout or a TLS failure escaped as a bare
+    exception, which the API reported as an opaque Internal Server Error instead
+    of saying what was wrong with the connection.
+    """
+    try:
+        yield
+    except ProviderError:
+        raise
+    except http_client.OutboundRequestError as exc:
+        raise ProviderError(f"the destination was refused: {exc}") from exc
+    except httpx.TimeoutException as exc:
+        raise ProviderError("the inference server did not answer in time") from exc
+    except httpx.HTTPError as exc:
+        detail = str(exc) or exc.__class__.__name__
+        raise ProviderError(f"could not reach the inference server: {detail}"[:300]) from exc
 
 
 @dataclass
@@ -71,15 +96,16 @@ class BaseProvider:
         return f"{self.base_url}{path}"
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        result = await http_client.post(
-            self._url(path),
-            json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
-            # An inference server almost always lives on the internal network;
-            # that is the whole point of running the model yourself.
-            allow_private=True,
-        )
+        with _transport_errors():
+            result = await http_client.post(
+                self._url(path),
+                json=payload,
+                headers=self._headers(),
+                timeout=self.timeout,
+                # An inference server almost always lives on the internal network;
+                # that is the whole point of running the model yourself.
+                allow_private=True,
+            )
         if not result.ok:
             raise ProviderError(self._error_message(result))
         if not isinstance(result.json_body, dict):
@@ -102,21 +128,22 @@ class BaseProvider:
     async def _stream(self, path: str, payload: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         """Open a streamed response and yield one parsed chunk at a time."""
         url = self._url(path)
-        http_client.validate_destination(url, allow_private=True)
-        client = http_client.stream_client(float(self.timeout), url)
-        async with (
-            client,
-            client.stream("POST", url, json=payload, headers=self._headers()) as response,
-        ):
-            if response.status_code >= 400:
-                body = (await response.aread()).decode("utf-8", "replace")[:300]
-                raise ProviderError(
-                    f"the inference server answered HTTP {response.status_code}: {body}"
-                )
-            async for line in response.aiter_lines():
-                chunk = self._parse_stream_line(line)
-                if chunk is not None:
-                    yield chunk
+        with _transport_errors():
+            http_client.validate_destination(url, allow_private=True)
+            client = http_client.stream_client(float(self.timeout), url)
+            async with (
+                client,
+                client.stream("POST", url, json=payload, headers=self._headers()) as response,
+            ):
+                if response.status_code >= 400:
+                    body = (await response.aread()).decode("utf-8", "replace")[:300]
+                    raise ProviderError(
+                        f"the inference server answered HTTP {response.status_code}: {body}"
+                    )
+                async for line in response.aiter_lines():
+                    chunk = self._parse_stream_line(line)
+                    if chunk is not None:
+                        yield chunk
 
     def _parse_stream_line(self, line: str) -> dict[str, Any] | None:
         raise NotImplementedError
@@ -171,15 +198,17 @@ class OllamaProvider(BaseProvider):
         return {"model": self.model, "options": self._options()}
 
     async def list_models(self) -> list[str]:
-        result = await http_client.get(
-            self._url("/api/tags"),
-            headers=self._headers(),
-            timeout=self.timeout,
-            allow_private=True,
-        )
+        with _transport_errors():
+            result = await http_client.get(
+                self._url("/api/tags"),
+                headers=self._headers(),
+                timeout=self.timeout,
+                allow_private=True,
+            )
         if not result.ok:
             raise ProviderError(self._error_message(result))
-        models = (result.json_body or {}).get("models") or []
+        body = result.json_body if isinstance(result.json_body, dict) else {}
+        models = [m for m in body.get("models") or [] if isinstance(m, dict)]
         return sorted(str(entry.get("model") or entry.get("name") or "") for entry in models)
 
     async def chat(
@@ -258,15 +287,17 @@ class OpenAiProvider(BaseProvider):
         return parameters
 
     async def list_models(self) -> list[str]:
-        result = await http_client.get(
-            self._url("/v1/models"),
-            headers=self._headers(),
-            timeout=self.timeout,
-            allow_private=True,
-        )
+        with _transport_errors():
+            result = await http_client.get(
+                self._url("/v1/models"),
+                headers=self._headers(),
+                timeout=self.timeout,
+                allow_private=True,
+            )
         if not result.ok:
             raise ProviderError(self._error_message(result))
-        data = (result.json_body or {}).get("data") or []
+        body = result.json_body if isinstance(result.json_body, dict) else {}
+        data = [e for e in body.get("data") or [] if isinstance(e, dict)]
         return sorted(str(entry.get("id") or "") for entry in data if entry.get("id"))
 
     async def chat(

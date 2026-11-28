@@ -50,6 +50,8 @@ class PluginOut(BaseModel):
     documentation_url: str
     free_tier: bool
     requires_network: bool
+    # "alpha" = checked against mocks only, never against the live provider.
+    maturity: str = "stable"
     provider: ProviderInfoOut
     is_custom: bool
     plugin_version: str

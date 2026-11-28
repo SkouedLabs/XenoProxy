@@ -34,6 +34,7 @@ returns the stored response instead of submitting twice, which is what makes a r
 | GET | `/api/v1/jobs/{id}/export?format=json\|markdown` | `jobs:export` | Export a report |
 | GET | `/api/v1/jobs/{id}/children` | `jobs:read` | Jobs a pivot derived from this one |
 | GET | `/api/v1/jobs/{id}/recap` | `jobs:read` | Facts (network, certificates, registration), per-source verdicts and the relation graph of the job and its pivots |
+| GET | `/api/v1/jobs/{id}/detection-graph` | `jobs:read` | Alpha. What each analyzer found and the chain of pivots and lookups that led to it: every node has a `layer` (hops from the observable) and a `via` (the edge that reached it, with the source plugin). Built from stored reports, no provider call |
 | POST | `/api/v1/jobs/{id}/kill` | `jobs:write` | Stop a running job at its next checkpoint |
 | POST | `/api/v1/jobs/{id}/reports/{report_id}/retry` | `jobs:write` | Re-run one failed, killed or skipped plugin |
 | POST | `/api/v1/reports/search` | `jobs:read` | Query inside the raw payloads |

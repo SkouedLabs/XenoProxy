@@ -23,7 +23,6 @@ from app.services.observables import Observable, hostname_of
 _BASE = "https://search.censys.io/api/v2"
 
 
-
 def _technologies(services: list[Any], operating_system: Any) -> list[str]:
     """Censys names software per service, and the OS as a product of its own."""
     found: list[str | None] = []

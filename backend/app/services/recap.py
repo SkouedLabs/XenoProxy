@@ -13,10 +13,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.job import Job, PluginReport, ReportStatus
+from app.services import xeno_score
 
 MAX_NODES = 400
 MAX_EDGES = 1200
 MAX_CERTIFICATES = 50
+MAX_TAGS_PER_REPORT = 12
+MAX_DETECTIONS_PER_REPORT = 30
 
 
 def _key(value: str) -> str:
@@ -45,6 +48,10 @@ class Graph:
     nodes: dict[str, dict[str, Any]] = field(default_factory=dict)
     edges: dict[tuple[str, str, str], dict[str, Any]] = field(default_factory=dict)
     truncated: bool = False
+    # Detection view only. Analyzers and pivots become nodes of their own, so every
+    # finding is reached through the source that produced it and the chain reads back.
+    with_analyzers: bool = False
+    _anchor: tuple[str, str] | None = field(default=None, repr=False)
 
     def node(self, kind: str, value: str, label: str | None = None, **data: Any) -> str | None:
         node_id = f"{kind}:{value}"
@@ -59,6 +66,16 @@ class Graph:
         return node_id
 
     def link(
+        self, source: str | None, target: str | None, relation: str, plugin: str | None = None
+    ) -> None:
+        anchor = self._anchor
+        if anchor is not None and plugin and source == anchor[0]:
+            # A finding of the analyzer being read: subject -> analyzer -> finding.
+            self.put(source, anchor[1], "analysed_by", plugin)
+            source = anchor[1]
+        self.put(source, target, relation, plugin)
+
+    def put(
         self, source: str | None, target: str | None, relation: str, plugin: str | None = None
     ) -> None:
         if source is None or target is None or source == target:
@@ -99,9 +116,13 @@ class Graph:
         }
 
 
-def build_graph(root: Job, jobs: list[Job]) -> Graph:
-    """Graph of the observables of every job in the tree, linked by pivot lineage."""
-    graph = Graph()
+def build_graph(root: Job, jobs: list[Job], with_analyzers: bool = False) -> Graph:
+    """Graph of the observables of every job in the tree, linked by pivot lineage.
+
+    With `with_analyzers`, each analyzer and each pivot is a node of its own (the
+    detection view). Without it, findings hang directly off the observable.
+    """
+    graph = Graph(with_analyzers=with_analyzers)
     observable_of: dict[uuid.UUID, str | None] = {}
     for job in jobs:
         observable_of[job.id] = graph.node(
@@ -111,16 +132,32 @@ def build_graph(root: Job, jobs: list[Job]) -> Graph:
 
     for job in jobs:
         if job.parent_job_id in observable_of:
-            graph.link(
+            _link_pivot(
+                graph,
                 observable_of[job.parent_job_id],
                 observable_of[job.id],
                 job.pivot_name or "pivot",
-                job.pivot_name,
             )
         for report in job.reports:
-            if report.status is ReportStatus.SUCCESS:
+            if with_analyzers:
+                if report.plugin_type == "analyzer":
+                    _add_report(graph, report)
+            elif report.status is ReportStatus.SUCCESS:
                 _add_report(graph, report)
     return graph
+
+
+def _link_pivot(graph: Graph, parent: str | None, child: str | None, name: str) -> None:
+    if not graph.with_analyzers:
+        graph.link(parent, child, name, name)
+        return
+    pivot = graph.node("pivot", f"{name}@{parent}", name)
+    graph.put(parent, pivot, "spawned", name)
+    graph.put(pivot, child, name, name)
+
+
+def _text(value: object) -> str:
+    return str(getattr(value, "value", value))
 
 
 def _add_report(graph: Graph, report: PluginReport) -> None:
@@ -131,6 +168,75 @@ def _add_report(graph: Graph, report: PluginReport) -> None:
     extra: dict[str, Any] = summary.get("extra") or {}
     raw: dict[str, Any] = report.raw_output or {}
     plugin = report.plugin_name
+    if not graph.with_analyzers:
+        _add_findings(graph, subject, summary, extra, raw, plugin)
+        return
+
+    analyzer = _add_analyzer(graph, subject, report, summary)
+    if analyzer is None or report.status is not ReportStatus.SUCCESS:
+        return
+    graph._anchor = (subject, analyzer)
+    try:
+        _add_findings(graph, subject, summary, extra, raw, plugin)
+        _add_facets(graph, analyzer, summary, plugin)
+    finally:
+        graph._anchor = None
+
+
+def _add_analyzer(
+    graph: Graph, subject: str | None, report: PluginReport, summary: dict[str, Any]
+) -> str | None:
+    """One node per analyzer per observable: what it was asked, and what it concluded."""
+    if subject is None:
+        return None
+    headline = summary.get("headline")
+    score = summary.get("score")
+    reason = getattr(report, "errors", None)
+    node = graph.node(
+        "analyzer",
+        f"{report.plugin_name}@{subject}",
+        report.plugin_name,
+        verdict=summary.get("verdict") or "unknown",
+        status=_text(report.status),
+        headline=str(headline)[:240] if headline else None,
+        score=score if isinstance(score, int) else None,
+        reason=str(reason)[:240] if reason else None,
+    )
+    graph.put(subject, node, "analysed_by", report.plugin_name)
+    return node
+
+
+def _add_facets(graph: Graph, analyzer: str | None, summary: dict[str, Any], plugin: str) -> None:
+    """What the analyzer tagged and which engines flagged it, as nodes of their own."""
+    for tag in _as_list(summary.get("tags"))[:MAX_TAGS_PER_REPORT]:
+        text = str(tag).strip()
+        if text:
+            graph.put(analyzer, graph.node("tag", _key(text), text), "tagged", plugin)
+    for entry in _as_list(summary.get("detections"))[:MAX_DETECTIONS_PER_REPORT]:
+        if not isinstance(entry, dict):
+            continue
+        engine = str(entry.get("engine") or "").strip()
+        result = str(entry.get("result") or "").strip()
+        if not engine:
+            continue
+        node = graph.node(
+            "detection",
+            _key(f"{engine}:{result}"),
+            f"{result or 'flagged'} ({engine})",
+            engine=engine,
+            category=entry.get("category"),
+        )
+        graph.put(analyzer, node, "flagged_as", plugin)
+
+
+def _add_findings(
+    graph: Graph,
+    subject: str | None,
+    summary: dict[str, Any],
+    extra: dict[str, Any],
+    raw: dict[str, Any],
+    plugin: str,
+) -> None:
     _add_location(graph, subject, summary, extra, plugin)
     _add_services(graph, subject, summary, plugin)
     _add_names(graph, subject, summary, extra, raw, plugin)
@@ -170,9 +276,7 @@ def _add_location(
         graph.link(subject, graph.node("city", _key(place), place), "located_in", plugin)
 
 
-def _add_services(
-    graph: Graph, subject: str | None, summary: dict[str, Any], plugin: str
-) -> None:
+def _add_services(graph: Graph, subject: str | None, summary: dict[str, Any], plugin: str) -> None:
     for port in _as_list(summary.get("open_ports")):
         graph.link(subject, graph.node("port", str(port), str(port)), "exposes", plugin)
     for tech in _as_list(summary.get("technologies")):
@@ -333,4 +437,6 @@ def build_recap(root: Job, jobs: list[Job]) -> dict[str, Any]:
         },
         "verdicts": [_verdict_line(job, report) for job in jobs for report in job.reports],
         "graph": graph.as_dict(),
+        # Scored on the root observable only: pivots are other observables.
+        "xeno_score": xeno_score.compute(list(root.reports)).as_dict(),
     }

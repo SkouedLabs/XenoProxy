@@ -73,7 +73,6 @@ keeps one failing integration from failing the job around it.
 | `joesandbox_enterprise` | hash, url, file | API key + appliance URL | Same, on your own appliance; submissions stay private, so up to TLP:RED |
 | `dns` | domain, url, ip | — | A, AAAA, MX, TXT, NS, SOA, CNAME, CAA, PTR |
 | `rdap` | domain, url, ip | — | Registration, expiry, abuse contact |
-| `n8n` | all | Webhook URL | Asks an existing workflow about the observable, signed with HMAC-SHA256 |
 
 ### Connectors
 
@@ -85,7 +84,6 @@ running it alongside the analyzers would publish an empty verdict.
 | Connector | Credential | Notes |
 |---|---|---|
 | `opencti_export` | Platform URL + token | Creates the STIX observable, with the verdict as its confidence score and the job's tags as labels |
-| `n8n_webhook` | Webhook URL | Posts the finished job so a workflow can open a ticket, notify a channel or file a report |
 
 A connector may decline a job, and says why: a verdict below its configured
 floor, an analysis that failed outright, or an observable type it cannot export.
@@ -263,7 +261,7 @@ shows it as a mark next to the author and filters on it.
 ## 9. API
 
 Every interface action maps to a documented REST endpoint under `/api/v1`.
-Scripts and n8n authenticate with a personal token as `Authorization: Bearer`.
+Scripts and automation tools authenticate with a personal token as `Authorization: Bearer`.
 Mutating calls accept an `Idempotency-Key` so a retry cannot create a second job.
 
 ## 10. Not in this version

@@ -23,7 +23,7 @@ from app.core.db import dispose_engine, get_session_factory
 from app.core.logging import configure_logging, get_logger
 from app.core.sandbox import install_exec_guard
 from app.plugins import load_all
-from app.services import app_settings, orchestrator
+from app.services import app_settings, orchestrator, yara_rules
 
 logger = get_logger(__name__)
 
@@ -45,6 +45,27 @@ async def run_job(context: dict[str, Any], job_id: str) -> None:
         uuid.UUID(job_id),
         store=queue,
         enqueue=enqueue,
+    )
+
+
+async def pull_yara_ruleset(_context: dict[str, Any], source_id: str) -> None:
+    """Download a public YARA ruleset. Only the worker has an outbound route."""
+    await _refresh_outbound_route()
+    yara_rules.write_status(source=source_id, state="running")
+    try:
+        meta = await yara_rules.pull(source_id)
+    except yara_rules.PullError as exc:
+        yara_rules.write_status(source=source_id, state="failed", error=str(exc))
+        logger.warning("yara_pull_failed", source=source_id, error=str(exc))
+        return
+    except Exception as exc:
+        yara_rules.write_status(
+            source=source_id, state="failed", error=f"Unexpected error: {type(exc).__name__}"
+        )
+        logger.exception("yara_pull_crashed", source=source_id)
+        return
+    yara_rules.write_status(
+        source=source_id, state="done", files=meta["files"], compiled=meta["compiled"]
     )
 
 
@@ -86,7 +107,7 @@ def _redis_settings() -> RedisSettings:
 class WorkerSettings:
     """arq worker definition, referenced as `app.worker.WorkerSettings`."""
 
-    functions: ClassVar[list[Callable[..., Any]]] = [run_job]
+    functions: ClassVar[list[Callable[..., Any]]] = [run_job, pull_yara_ruleset]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 20

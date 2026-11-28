@@ -48,7 +48,5 @@ def from_request(request: Request) -> JobOrigin:
     MCP bridge holds a token too, so it overrides this with its own mark.
     """
     authorization = request.headers.get("authorization", "")
-    default = (
-        JobOrigin.API if authorization.lower().startswith("bearer ") else JobOrigin.UI
-    )
+    default = JobOrigin.API if authorization.lower().startswith("bearer ") else JobOrigin.UI
     return current(default)

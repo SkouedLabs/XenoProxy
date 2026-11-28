@@ -132,7 +132,8 @@ def test_red_excludes_every_source_that_leaves_the_deployment() -> None:
 
     load_all()
     allowed = [cls.name for cls in iter_analyzers() if tlp_policy.allows(Tlp.RED, cls.max_tlp)]
-    assert "dns" in allowed
+    assert "dns" not in allowed  # the container resolver forwards the name outward
+    assert "yara_local" in allowed
     assert "shodan" not in allowed
     assert "virustotal" not in allowed
     assert "urlscan" not in allowed
