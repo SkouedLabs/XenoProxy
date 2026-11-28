@@ -284,6 +284,21 @@ export function LoginPage() {
             </form>
           )}
 
+          {methods?.public_submission ? (
+            <a
+              href="/public"
+              className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-primary-border bg-primary-soft px-3.5 py-2.5 text-sm transition-colors duration-fast ease-out hover:border-primary"
+            >
+              <span>
+                <span className="font-medium text-primary">No account?</span>{' '}
+                <span className="text-muted">Check an IP, domain, URL or hash publicly.</span>
+              </span>
+              <span className="text-primary" aria-hidden>
+                →
+              </span>
+            </a>
+          ) : null}
+
           <details className="mt-5 text-center">
             <summary className="cursor-pointer text-xs text-faint transition-colors duration-fast ease-out hover:text-muted">
               First sign-in on a new instance?

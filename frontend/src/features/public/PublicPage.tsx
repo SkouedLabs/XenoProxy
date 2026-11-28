@@ -1,16 +1,22 @@
 /**
- * Public submission page: no sidebar, one box to submit, the caller's remaining
- * allowance, and the result of the submission they just made (and only that one).
+ * Public submission page.
+ *
+ * Same look as the analyst's "New scan" page, without the workspace: no sidebar,
+ * one field to check an observable, the caller's remaining allowance, and only the
+ * result of the submission made in this tab.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogIn } from 'lucide-react';
+import { CircleAlert, LogIn, Send } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/app/auth-context';
 import { Badge, Button, Card, ErrorBanner, Input, Skeleton } from '@/components/ui';
 import { LogoMark } from '@/components/ui/Logo';
+import { ObservableTypeBadge, VerdictBadge } from '@/components/ui/verdict';
 import { ApiError, api } from '@/lib/api-client';
+import type { Verdict } from '@/lib/types';
 
 interface PublicQuota {
   limit: number;
@@ -39,15 +45,6 @@ interface PublicSubmission {
 const STORAGE_KEY = 'xenoproxy.public.submission';
 const ACTIVE = new Set(['pending', 'queued', 'running']);
 
-type Tone = 'neutral' | 'success' | 'warning' | 'danger';
-
-function verdictTone(verdict: string): Tone {
-  if (verdict === 'malicious') return 'danger';
-  if (verdict === 'suspicious') return 'warning';
-  if (verdict === 'clean') return 'success';
-  return 'neutral';
-}
-
 function readStoredId(): string | null {
   try {
     return window.sessionStorage.getItem(STORAGE_KEY);
@@ -61,7 +58,7 @@ function storeId(id: string | null): void {
     if (id) window.sessionStorage.setItem(STORAGE_KEY, id);
     else window.sessionStorage.removeItem(STORAGE_KEY);
   } catch {
-    // Without storage the result simply is not remembered across a reload.
+    // Without storage the result is simply not kept across a reload.
   }
 }
 
@@ -74,10 +71,16 @@ function describe(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return 'Public submission is not available on this instance.';
     if (error.status === 403) return 'Public submission is not open to your address.';
-    if (error.status === 429) return 'You have used your allowance for now. Try again later.';
+    if (error.status === 429) return 'You have used your allowance for this hour.';
     return error.message;
   }
   return 'Something went wrong. Try again.';
+}
+
+const KNOWN_VERDICTS = new Set<string>(['clean', 'suspicious', 'malicious']);
+
+function asVerdict(value: string): Verdict {
+  return KNOWN_VERDICTS.has(value) ? (value as Verdict) : 'unknown';
 }
 
 export function PublicPage() {
@@ -124,9 +127,9 @@ export function PublicPage() {
     if (trimmed) submit.mutate(trimmed);
   };
 
-  const exhausted = quota.data?.remaining === 0;
   const unavailable = quota.error instanceof ApiError ? quota.error : null;
   const blocked = unavailable !== null && [403, 404].includes(unavailable.status);
+  const exhausted = quota.data?.remaining === 0;
 
   // A stored id that no longer resolves is dropped rather than shown as an error.
   if (result.error instanceof ApiError && result.error.status === 404 && submissionId) {
@@ -135,79 +138,118 @@ export function PublicPage() {
   }
 
   const data = result.data;
+  const used = quota.data ? quota.data.limit - quota.data.remaining : 0;
 
   return (
-    <div className="flex min-h-full flex-col bg-canvas text-text">
-      <header className="flex items-center justify-between border-b border-border px-5 py-3">
-        <div className="flex items-center gap-2.5">
+    <div className="min-h-full bg-canvas text-text">
+      <header className="glass sticky top-0 z-30 flex items-center justify-between border-b border-border px-4 py-3">
+        <Link to="/public" className="flex items-center gap-2.5">
           <LogoMark size={28} />
           <span className="text-sm font-semibold">XenoProxy</span>
-        </div>
+        </Link>
         {user ? (
-          <a href="/scan" className="text-sm text-muted hover:text-text">
-            {user.display_name ?? user.username} · open the workspace
-          </a>
+          <Link to="/scan" className="text-sm text-muted hover:text-text">
+            {user.display_name ?? user.username} · workspace
+          </Link>
         ) : (
-          <a
-            href="/scan"
+          <Link
+            to="/"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-raised"
           >
             <LogIn size={14} aria-hidden="true" /> Sign in
-          </a>
+          </Link>
         )}
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 space-y-5 px-4 py-10">
-        <div>
-          <h1 className="text-xl font-semibold">Check an observable</h1>
-          <p className="mt-1 text-sm text-muted">
-            An IP address, a domain, a URL or a file hash. It is sent to the reputation sources this
-            instance has chosen for public use.
+      <main className="mx-auto max-w-3xl px-4 pb-24 pt-14">
+        <section className="mb-7 text-center">
+          <LogoMark size={44} className="mx-auto" />
+          <h1 className="mt-3.5 text-3xl font-semibold">
+            Is it <span className="text-gradient">safe</span>?
+          </h1>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-muted">
+            Paste an address, a domain, a URL or a file hash. XenoProxy checks it against the
+            sources this instance makes available to the public.
           </p>
-        </div>
 
-        {blocked ? <ErrorBanner message={describe(unavailable)} /> : null}
-
-        {!blocked ? (
-          <Card>
-            <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row">
+          {blocked ? (
+            <div className="mx-auto mt-8 max-w-2xl text-left">
+              <ErrorBanner message={describe(unavailable)} />
+            </div>
+          ) : (
+            <form onSubmit={onSubmit} className="relative mx-auto mt-7 max-w-2xl">
               <Input
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
-                placeholder="example.com, 203.0.113.7, https://…, sha256"
+                placeholder="8.8.8.8 · example.com · https://example.com/path · a file hash"
                 aria-label="Observable to check"
                 maxLength={2048}
+                spellCheck={false}
                 disabled={exhausted}
-                className="flex-1"
+                className="h-14 pr-32 text-base"
               />
-              <Button type="submit" disabled={!value.trim() || exhausted || submit.isPending}>
+              <Button
+                type="submit"
+                className="absolute right-2 top-2 h-10"
+                disabled={!value.trim() || exhausted || submit.isPending}
+              >
+                <Send className="h-4 w-4" aria-hidden />
                 {submit.isPending ? 'Sending…' : 'Check'}
               </Button>
             </form>
-            <div className="mt-3 text-xs text-muted" aria-live="polite">
+          )}
+
+          {!blocked ? (
+            <div className="mx-auto mt-4 flex max-w-2xl flex-col items-center gap-2 text-xs text-muted sm:flex-row sm:justify-between" aria-live="polite">
               {quota.isLoading ? (
                 <Skeleton className="h-4 w-48" />
               ) : quota.data ? (
-                <p>
-                  {quota.data.remaining} of {quota.data.limit} checks left this hour
-                  {quota.data.remaining < quota.data.limit && quota.data.reset_seconds > 0
-                    ? `, renewed in ${formatReset(quota.data.reset_seconds)}`
-                    : ''}
-                  .
-                </p>
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="flex gap-1" aria-hidden>
+                      {Array.from({ length: quota.data.limit }, (_, index) => (
+                        <span
+                          key={index}
+                          className={`h-1.5 w-4 rounded-pill ${index < used ? 'bg-primary' : 'bg-surface-sunken'}`}
+                        />
+                      ))}
+                    </span>
+                    <span>
+                      {quota.data.remaining} of {quota.data.limit} checks left this hour
+                    </span>
+                  </div>
+                  {quota.data.remaining < quota.data.limit && quota.data.reset_seconds > 0 ? (
+                    <span>renews in {formatReset(quota.data.reset_seconds)}</span>
+                  ) : null}
+                </>
               ) : null}
             </div>
-          </Card>
+          ) : null}
+        </section>
+
+        {exhausted && !blocked ? (
+          <div className="mx-auto mb-6 flex max-w-2xl items-center gap-2 text-sm text-warning">
+            <CircleAlert className="h-4 w-4" aria-hidden /> You have used this hour's checks. Come
+            back shortly.
+          </div>
         ) : null}
 
-        {submit.error ? <ErrorBanner message={describe(submit.error)} /> : null}
+        {submit.error ? (
+          <div className="mx-auto mb-6 max-w-2xl">
+            <ErrorBanner message={describe(submit.error)} />
+          </div>
+        ) : null}
 
         {data ? (
           <Card
-            title={<span className="break-all">{data.value}</span>}
-            description={`${data.type} · ${data.status}`}
-            actions={<Badge tone={verdictTone(data.verdict)}>{data.verdict}</Badge>}
+            className="mx-auto max-w-2xl"
+            title={<span className="break-all font-mono text-base">{data.value}</span>}
+            description={<ObservableTypeBadge type={data.type} />}
+            actions={<VerdictBadge verdict={asVerdict(data.verdict)} />}
           >
+            <p className="mb-3 text-xs text-muted">
+              {ACTIVE.has(data.status) ? 'Analysis in progress…' : 'Analysis complete.'}
+            </p>
             {data.sources.length === 0 ? (
               <p className="text-sm text-muted">
                 {ACTIVE.has(data.status) ? 'Waiting for the sources…' : 'No source answered.'}
@@ -215,11 +257,11 @@ export function PublicPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {data.sources.map((source) => (
-                  <li key={source.name} className="flex items-center justify-between py-2 text-sm">
-                    <span>{source.name}</span>
+                  <li key={source.name} className="flex items-center justify-between py-2.5 text-sm">
+                    <span className="font-medium">{source.name}</span>
                     <span className="flex items-center gap-2">
-                      <span className="text-xs text-muted">{source.status}</span>
-                      <Badge tone={verdictTone(source.verdict)}>{source.verdict}</Badge>
+                      <Badge tone="neutral">{source.status}</Badge>
+                      <VerdictBadge verdict={asVerdict(source.verdict)} />
                     </span>
                   </li>
                 ))}

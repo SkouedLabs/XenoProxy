@@ -24,6 +24,7 @@ from app.core.errors import (
     UnauthorizedError,
     ValidationFailedError,
 )
+from app.core.networks import address_allowed
 from app.models.user import ApiKey, AuthSource
 from app.schemas.auth import (
     ApiKeyCreate,
@@ -56,14 +57,23 @@ _PUBLIC = {"login", "methods"}
 
 
 @router.get("/methods", response_model=AuthMethods, summary="List enabled sign-in methods")
-async def methods(session: DbSession) -> AuthMethods:
+async def methods(request: Request, session: DbSession) -> AuthMethods:
     settings = get_settings()
     sso = await oidc.effective_config(session)
+    # Offered only where this caller could actually use it, so the sign-in page does
+    # not advertise a form that would answer 403.
+    public_open = bool(await settings_store.get(session, "public_submission")) and (
+        address_allowed(
+            str(await settings_store.get(session, "public_allowed_networks") or ""),
+            client_ip(request),
+        )
+    )
     return AuthMethods(
         local_enabled=True,
         oidc_enabled=oidc.is_available(sso),
         oidc_label=sso.label,
         proxy_enabled=settings.proxy_auth_enabled,
+        public_submission=public_open,
     )
 
 

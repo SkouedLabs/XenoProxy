@@ -64,6 +64,7 @@ export interface AuthMethods {
   oidc_enabled: boolean;
   oidc_label: string;
   proxy_enabled: boolean;
+  public_submission?: boolean;
 }
 
 /** One engine's opinion inside a source that runs several of them. */

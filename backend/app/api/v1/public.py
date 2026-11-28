@@ -9,7 +9,6 @@ the PUBLIC origin, so signed-in users can filter them in the history.
 
 from __future__ import annotations
 
-import ipaddress
 import uuid
 
 from fastapi import APIRouter, Request, status
@@ -18,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, client_ip
 from app.core.errors import ForbiddenError, NotFoundError, ValidationFailedError
+from app.core.networks import address_allowed
 from app.core.rate_limit import (
     PUBLIC_SUBMISSION_LIMIT,
     PUBLIC_SUBMISSION_PATH,
@@ -36,27 +36,6 @@ from app.services import audit, orchestrator, settings_store
 router = APIRouter(prefix="/public", tags=["public"])
 
 PUBLIC_PLAYBOOK = "Public submission"
-
-
-def address_allowed(allowed: str, address: str | None) -> bool:
-    """True when the allow-list is empty or the address falls in one of its networks."""
-    tokens = allowed.replace(",", " ").split()
-    if not tokens:
-        return True
-    if address is None:
-        return False
-    try:
-        candidate = ipaddress.ip_address(address)
-    except ValueError:
-        return False
-    for token in tokens:
-        try:
-            network = ipaddress.ip_network(token, strict=False)
-        except ValueError:
-            continue
-        if candidate.version == network.version and candidate in network:
-            return True
-    return False
 
 
 async def _require_enabled(session: DbSession, request: Request) -> None:

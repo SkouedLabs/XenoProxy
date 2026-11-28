@@ -15,7 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE job_origin ADD VALUE IF NOT EXISTS 'public'")
+    # SQLAlchemy stores an Enum by member name, so the label is "PUBLIC". A database
+    # that ran an earlier copy of this revision gets it from 0018.
+    op.execute("ALTER TYPE job_origin ADD VALUE IF NOT EXISTS 'PUBLIC'")
 
 
 def downgrade() -> None:

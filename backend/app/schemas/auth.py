@@ -70,6 +70,8 @@ class AuthMethods(BaseModel):
     oidc_enabled: bool
     oidc_label: str = "Single sign-on"
     proxy_enabled: bool
+    # Public submission is on and open to this caller's address.
+    public_submission: bool = False
 
 
 class ApiKeyCreate(StrictModel):

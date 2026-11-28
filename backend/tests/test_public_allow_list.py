@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.v1.public import address_allowed
 from app.core.errors import ValidationFailedError
+from app.core.networks import address_allowed
 from app.services.settings_store import BY_KEY, _coerce
 
 
